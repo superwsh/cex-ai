@@ -41,4 +41,14 @@ public class OrderPersistenceService {
         eventPublisher.publishOrderCreated(order);
         return CreateOrderResult.of(order);
     }
+
+    /**
+     * 取消落库:状态置 CANCELED + 写取消事件,同一事务
+     */
+    @Transactional
+    public void cancelInTx(Order order) {
+        order.setUpdatedAt(java.time.LocalDateTime.now());
+        orderRepository.update(order);
+        eventPublisher.publishOrderCanceled(order);
+    }
 }
