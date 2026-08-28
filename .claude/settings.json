@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mvn -v)",
+      "Bash(git -C \"d:/projects/web3/cex-ai\" log --oneline 759f132..43c02a6)",
+      "Bash(git -C \"d:/projects/web3/cex-ai\" show 43c02a6 --stat --format=\"%H %s\")",
+      "Bash(git -C \"d:/projects/web3/cex-ai\" status --porcelain)",
+      "Bash(git -C \"d:/projects/web3/cex-ai\" diff HEAD -- cex-common/cex-common-kafka/src/main/java/com/cex/common/kafka/event/OrderEvent.java)",
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(mysql --version)",
+      "Bash(mysql -uroot -proot -e \"SELECT 1\")",
+      "Bash(mvn -pl cex-order-service -am test -Dtest=OrderStateMachineTest -DfailIfNoTests=false)"
+    ]
+  }
+}
