@@ -19,7 +19,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class OrderRepositoryImpl implements OrderRepository {
 
-    private static final String OPEN_STATUSES = "NEW,PENDING_MATCH,PARTIALLY_FILLED";
+    private static final String OPEN_STATUSES = "'NEW','PENDING_MATCH','PARTIALLY_FILLED'";
 
     private final OrderMapper orderMapper;
 
