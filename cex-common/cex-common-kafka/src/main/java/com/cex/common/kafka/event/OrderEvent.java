@@ -58,6 +58,9 @@ public class OrderEvent implements Serializable {
     /** 委托数量 */
     private BigDecimal quantity;
 
+    /** 客户端订单号(幂等键,撮合引擎回报时原样带回) */
+    private String clientOrderId;
+
     /** 事件发生时间（毫秒时间戳） */
     private Long timestamp;
 }
