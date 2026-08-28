@@ -28,6 +28,11 @@ spring:
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      # 消息可靠性:全部副本确认 + 幂等生产者(防重发)
+      acks: all
+      properties:
+        enable.idempotence: true
+        retries: 3
     consumer:
       group-id: cex-order
       auto-offset-reset: earliest
