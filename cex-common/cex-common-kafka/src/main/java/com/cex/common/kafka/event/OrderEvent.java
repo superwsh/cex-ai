@@ -1,0 +1,63 @@
+package com.cex.common.kafka.event;
+
+import lombok.AllArgsConstructor;
+import lombok.Builder;
+import lombok.Data;
+import lombok.NoArgsConstructor;
+
+import java.io.Serializable;
+import java.math.BigDecimal;
+
+/**
+ * 订单事件：Order Service 通过 Outbox 模式发布，Matching Engine 消费
+ */
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class OrderEvent implements Serializable {
+
+    private static final long serialVersionUID = 1L;
+
+    public enum OrderType {
+        LIMIT,   // 限价
+        MARKET   // 市价
+    }
+
+    public enum OrderSide {
+        BUY,
+        SELL
+    }
+
+    public enum Action {
+        SUBMIT,  // 提交
+        CANCEL   // 撤销
+    }
+
+    /** 订单ID（订单服务生成，全局唯一） */
+    private String orderId;
+
+    /** 交易对，如 BTC/USDT */
+    private String symbol;
+
+    /** 用户ID */
+    private Long userId;
+
+    /** 动作：提交 / 撤销 */
+    private Action action;
+
+    /** 买卖方向 */
+    private OrderSide side;
+
+    /** 订单类型 */
+    private OrderType type;
+
+    /** 委托价格（市价单为 null） */
+    private BigDecimal price;
+
+    /** 委托数量 */
+    private BigDecimal quantity;
+
+    /** 事件发生时间（毫秒时间戳） */
+    private Long timestamp;
+}

@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.cex</groupId>
+        <artifactId>cex-ai</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cex-market-service</artifactId>
+    <name>cex-market-service</name>
+    <description>行情服务：聚合成交/深度生成 tick 与 K 线，Netty WebSocket 推送行情</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-kafka</artifactId>
+        </dependency>
+        <!-- Netty WebSocket 行情推送（版本由 Spring Boot BOM 管理） -->
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty-all</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

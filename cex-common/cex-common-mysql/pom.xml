@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.cex</groupId>
+        <artifactId>cex-common</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cex-common-mysql</artifactId>
+    <name>cex-common-mysql</name>
+    <description>MySQL 公共模块：MyBatis-Plus 配置（ShardingSphere 按需启用）</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.baomidou</groupId>
+            <artifactId>mybatis-plus-spring-boot3-starter</artifactId>
+        </dependency>
+        <!-- MySQL 驱动（版本由 Spring Boot BOM 管理） -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!--
+            ShardingSphere-JDBC 分库分表：需要时取消注释，并在对应服务 yml 中配置
+            spring.shardingsphere.*（参考 cex-order-service 的 application.yml 注释示例）
+            <dependency>
+                <groupId>org.apache.shardingsphere</groupId>
+                <artifactId>shardingsphere-jdbc-spring-boot-starter</artifactId>
+            </dependency>
+        -->
+    </dependencies>
+</project>

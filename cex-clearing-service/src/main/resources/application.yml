@@ -1,0 +1,65 @@
+server:
+  port: 8105
+
+spring:
+  application:
+    name: cex-clearing-service
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+      config:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+        # import: optional:nacos:cex-clearing-service.yml?group=DEFAULT_GROUP
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/cex_account?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+  data:
+    redis:
+      # 账户余额热缓存
+      # cluster:
+      #   nodes: 127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006
+      host: ${REDIS_ADDR:127.0.0.1}
+      port: 6379
+  kafka:
+    bootstrap-servers: ${KAFKA_ADDR:127.0.0.1:9092}
+    consumer:
+      group-id: cex-clearing
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.cex.*"
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+
+dubbo:
+  application:
+    name: cex-clearing-service
+    qos-enable: false
+  protocol:
+    name: tri
+    port: -1
+  registry:
+    address: nacos://${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -1,0 +1,43 @@
+server:
+  port: 8104
+
+spring:
+  application:
+    name: cex-matching-engine
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+      config:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+        # import: optional:nacos:cex-matching-engine.yml?group=DEFAULT_GROUP
+  data:
+    redis:
+      # 交易对配置、行情快照缓存
+      # cluster:
+      #   nodes: 127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006
+      host: ${REDIS_ADDR:127.0.0.1}
+      port: 6379
+  kafka:
+    bootstrap-servers: ${KAFKA_ADDR:127.0.0.1:9092}
+    # 撮合事件按 symbol 分区，保证同一交易对串行消费
+    consumer:
+      group-id: cex-matching
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.cex.*"
+        max.poll.records: 500
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -1,0 +1,76 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: cex-gateway
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+      config:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+        # 从 Nacos 拉取网关配置（默认拉取 cex-gateway.yml，本地优先）
+        # import-check:
+        #   enabled: false
+    # 通过 spring.config.import 从 Nacos 配置中心拉取（可选，需先启动 Nacos）
+    # config:
+    #   import: optional:nacos:cex-gateway.yml?group=DEFAULT_GROUP
+    gateway:
+      # 开启自动发现路由：lb://<服务名> 直接可访问
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      # 显式路由定义（优先推荐，可配置鉴权/限流过滤器）
+      routes:
+        - id: cex-user-service
+          uri: lb://cex-user-service
+          predicates:
+            - Path=/api/user/**
+          filters:
+            - StripPrefix=1
+        - id: cex-order-service
+          uri: lb://cex-order-service
+          predicates:
+            - Path=/api/order/**
+          filters:
+            - StripPrefix=1
+        - id: cex-asset-service
+          uri: lb://cex-asset-service
+          predicates:
+            - Path=/api/asset/**
+          filters:
+            - StripPrefix=1
+        - id: cex-clearing-service
+          uri: lb://cex-clearing-service
+          predicates:
+            - Path=/api/clearing/**
+          filters:
+            - StripPrefix=1
+        - id: cex-market-service
+          uri: lb://cex-market-service
+          predicates:
+            - Path=/api/market/**
+          filters:
+            - StripPrefix=1
+        - id: cex-notification-service
+          uri: lb://cex-notification-service
+          predicates:
+            - Path=/api/notification/**
+          filters:
+            - StripPrefix=1
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      show-details: always
+
+logging:
+  level:
+    org.springframework.cloud.gateway: INFO

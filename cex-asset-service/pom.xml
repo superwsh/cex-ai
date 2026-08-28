@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.cex</groupId>
+        <artifactId>cex-ai</artifactId>
+        <version>1.0.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <artifactId>cex-asset-service</artifactId>
+    <name>cex-asset-service</name>
+    <description>资产服务：资产账户、余额、充值提现、交易资金划转</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-web</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-mysql</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-redis</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-kafka</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.cex</groupId>
+            <artifactId>cex-common-dubbo</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

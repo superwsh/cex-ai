@@ -1,0 +1,62 @@
+server:
+  port: 8103
+
+spring:
+  application:
+    name: cex-asset-service
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+      config:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+        # import: optional:nacos:cex-asset-service.yml?group=DEFAULT_GROUP
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/cex_asset?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
+  data:
+    redis:
+      # cluster:
+      #   nodes: 127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006
+      host: ${REDIS_ADDR:127.0.0.1}
+      port: 6379
+  kafka:
+    bootstrap-servers: ${KAFKA_ADDR:127.0.0.1:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+    consumer:
+      group-id: cex-asset
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.cex.*"
+
+dubbo:
+  application:
+    name: cex-asset-service
+    qos-enable: false
+  protocol:
+    name: tri
+    port: -1
+  registry:
+    address: nacos://${NACOS_ADDR:127.0.0.1:8848}
+
+mybatis-plus:
+  mapper-locations: classpath*:mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

@@ -1,0 +1,41 @@
+server:
+  port: 8106
+
+spring:
+  application:
+    name: cex-market-service
+  cloud:
+    nacos:
+      server-addr: ${NACOS_ADDR:127.0.0.1:8848}
+      discovery:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+      config:
+        namespace: ${NACOS_NAMESPACE:cex-dev}
+        # import: optional:nacos:cex-market-service.yml?group=DEFAULT_GROUP
+  data:
+    redis:
+      # 行情 tick、K 线、深度快照缓存
+      # cluster:
+      #   nodes: 127.0.0.1:7001,127.0.0.1:7002,127.0.0.1:7003,127.0.0.1:7004,127.0.0.1:7005,127.0.0.1:7006
+      host: ${REDIS_ADDR:127.0.0.1}
+      port: 6379
+  kafka:
+    bootstrap-servers: ${KAFKA_ADDR:127.0.0.1:9092}
+    consumer:
+      group-id: cex-market
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
+      properties:
+        spring.json.trusted.packages: "com.cex.*"
+
+# Netty WebSocket 行情推送端口
+netty:
+  ws:
+    port: 9001
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus

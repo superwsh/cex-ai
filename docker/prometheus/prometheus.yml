@@ -1,0 +1,45 @@
+# Prometheus 抓取配置：各微服务暴露 /actuator/prometheus
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'cex-gateway'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8080']
+
+  - job_name: 'cex-user-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8101']
+
+  - job_name: 'cex-order-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8102']
+
+  - job_name: 'cex-asset-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8103']
+
+  - job_name: 'cex-matching-engine'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8104']
+
+  - job_name: 'cex-clearing-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8105']
+
+  - job_name: 'cex-market-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8106']
+
+  - job_name: 'cex-notification-service'
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['host.docker.internal:8107']
