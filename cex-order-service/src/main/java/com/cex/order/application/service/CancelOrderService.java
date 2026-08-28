@@ -35,7 +35,7 @@ public class CancelOrderService {
     public void cancelOrder(CancelOrderCommand command) {
         // 归属 + 状态校验
         Order order = orderRepository.findByOrderId(command.getOrderId());
-        if (order == null || !command.getUserId().equals(order.getUserId())) {
+        if (order == null || !java.util.Objects.equals(command.getUserId(), order.getUserId())) {
             throw new BizException(ErrorCode.ORDER_NOT_FOUND.getCode(),
                     ErrorCode.ORDER_NOT_FOUND.getMessage() + ": " + command.getOrderId());
         }
