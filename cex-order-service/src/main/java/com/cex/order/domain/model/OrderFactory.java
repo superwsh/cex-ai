@@ -1,11 +1,14 @@
 package com.cex.order.domain.model;
 
+import org.springframework.stereotype.Component;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
  * 订单工厂:构造初始状态为 PENDING_MATCH 的订单(创建即提交待撮合)
  */
+@Component
 public class OrderFactory {
 
     public Order createPendingMatchOrder(Long orderId, Long userId, String clientOrderId,
