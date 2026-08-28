@@ -2,6 +2,7 @@ package com.cex.order.application.service;
 
 import com.cex.common.kafka.TopicConstants;
 import com.cex.common.kafka.event.TradeEvent;
+import com.cex.order.common.OrderStatusInvalidException;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.repository.OrderRepository;
 import com.cex.order.infrastructure.persistence.entity.ProcessedEventPO;
@@ -66,6 +67,9 @@ public class OrderEventConsumer {
             }
             order.markPartiallyFilled(quantity, amount); // 状态机:内部判断 PARTIALLY_FILLED/FILLED
             orderRepository.update(order);
+        } catch (OrderStatusInvalidException e) {
+            // 状态冲突(取消/终态竞态):视为已消费跳过,避免重试风暴,幂等记录照常写入,留日志人工介入
+            log.warn("成交回报与订单状态冲突,跳过: orderId={}, reason={}", orderIdStr, e.getMessage());
         } catch (NumberFormatException e) {
             log.warn("订单ID非法: {}", orderIdStr);
         }

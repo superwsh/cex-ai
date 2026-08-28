@@ -43,18 +43,28 @@ public class Order {
 
     /**
      * 成交回报:累计已成交数量/金额,按状态机流转
+     * 市价买单 quantity 恒为 ZERO,完成判断走金额维度(quoteAmount vs filledAmount)
      */
     public void markPartiallyFilled(BigDecimal fillQuantity, BigDecimal fillAmount) {
         if (!status.canFill()) {
             throw new OrderStatusInvalidException("订单状态 " + status + " 不允许成交");
         }
+        boolean marketBuy = type == OrderType.MARKET && side == OrderSide.BUY;
         BigDecimal newFilledQty = safeFilledQuantity().add(fillQuantity);
-        if (newFilledQty.compareTo(quantity) > 0) {
+        if (!marketBuy && newFilledQty.compareTo(quantity) > 0) {
             throw new OrderStatusInvalidException("成交数量超过委托数量: " + newFilledQty + " > " + quantity);
         }
+        BigDecimal newFilledAmount = safeFilledAmount().add(fillAmount);
+        if (marketBuy && quoteAmount != null && newFilledAmount.compareTo(quoteAmount) > 0) {
+            throw new OrderStatusInvalidException("成交金额超过冻结金额: " + newFilledAmount + " > " + quoteAmount);
+        }
         this.filledQuantity = newFilledQty;
-        this.filledAmount = safeFilledAmount().add(fillAmount);
-        this.status = newFilledQty.compareTo(quantity) >= 0 ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED;
+        this.filledAmount = newFilledAmount;
+        this.status = marketBuy
+                ? (quoteAmount != null && newFilledAmount.compareTo(quoteAmount) >= 0
+                        ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED)
+                : (newFilledQty.compareTo(quantity) >= 0
+                        ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED);
         this.updatedAt = LocalDateTime.now();
     }
 

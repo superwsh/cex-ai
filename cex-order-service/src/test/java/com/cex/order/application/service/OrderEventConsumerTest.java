@@ -88,4 +88,19 @@ class OrderEventConsumerTest {
 
         assertThat(consumer).isNotNull();
     }
+
+    @Test
+    void onTradeEvent_canceledOrderFill_skipsUpdateButRecordsProcessed() {
+        Order canceled = openBuyOrder(1L);
+        canceled.cancel();
+        when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(false);
+        when(orderRepository.findByOrderId(1L)).thenReturn(canceled);
+        when(orderRepository.findByOrderId(2L)).thenReturn(null);
+
+        consumer.onTradeEvent(tradeEvent("t1", 1L, 2L));
+
+        // 状态冲突(订单已取消)不抛异常、不更新订单,但幂等记录照常写入(视为已消费,避免重试风暴)
+        verify(orderRepository, never()).update(any());
+        verify(processedEventRepository).save(any(ProcessedEventPO.class));
+    }
 }

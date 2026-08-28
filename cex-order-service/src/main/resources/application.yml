@@ -36,10 +36,14 @@ spring:
     consumer:
       group-id: cex-order
       auto-offset-reset: earliest
+      # 消费可靠性:关闭自动提交,事务提交成功后由容器 ack(见 listener.ack-mode)
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "com.cex.*"
+    listener:
+      ack-mode: record
 
 dubbo:
   application:

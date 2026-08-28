@@ -90,4 +90,32 @@ class FreezeCalculatorTest {
         BigDecimal remaining = calculator.remainingToUnfreeze(order, config);
         assertThat(remaining).isEqualByComparingTo("0.06");
     }
+
+    @Test
+    void remainingToUnfreeze_marketBuy_unfilledQuoteAmount() {
+        Order order = Order.builder()
+                .orderId(1L).userId(100L).symbol("BTC_USDT")
+                .side(OrderSide.BUY).type(OrderType.MARKET)
+                .quantity(BigDecimal.ZERO)
+                .quoteAmount(new BigDecimal("5000"))
+                .filledQuantity(BigDecimal.ZERO).filledAmount(null)
+                .status(OrderStatus.CANCELED)
+                .build();
+        BigDecimal remaining = calculator.remainingToUnfreeze(order, config);
+        assertThat(remaining).isEqualByComparingTo("5000");
+    }
+
+    @Test
+    void remainingToUnfreeze_marketBuy_partialFill_deductsFilledAmount() {
+        Order order = Order.builder()
+                .orderId(1L).userId(100L).symbol("BTC_USDT")
+                .side(OrderSide.BUY).type(OrderType.MARKET)
+                .quantity(BigDecimal.ZERO)
+                .quoteAmount(new BigDecimal("5000"))
+                .filledQuantity(new BigDecimal("0.02")).filledAmount(new BigDecimal("2000"))
+                .status(OrderStatus.PARTIALLY_FILLED)
+                .build();
+        BigDecimal remaining = calculator.remainingToUnfreeze(order, config);
+        assertThat(remaining).isEqualByComparingTo("3000");
+    }
 }

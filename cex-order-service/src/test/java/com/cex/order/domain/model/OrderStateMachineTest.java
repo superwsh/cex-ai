@@ -19,6 +19,17 @@ class OrderStateMachineTest {
                 .build();
     }
 
+    /** 市价买单:quantity 恒为 ZERO,成交判断走金额维度(quoteAmount) */
+    private Order newMarketBuyOrder() {
+        return Order.builder()
+                .orderId(2L).userId(100L).clientOrderId("c2").symbol("BTC_USDT")
+                .side(OrderSide.BUY).type(OrderType.MARKET)
+                .quantity(BigDecimal.ZERO)
+                .quoteAmount(new BigDecimal("5000"))
+                .status(OrderStatus.PENDING_MATCH)
+                .build();
+    }
+
     @Test
     void pendingMatch_canCancel() {
         Order order = newOrder();
@@ -82,5 +93,32 @@ class OrderStateMachineTest {
         assertThatThrownBy(() -> order.markPartiallyFilled(new BigDecimal("0.2"), new BigDecimal("20000")))
                 .isInstanceOf(OrderStatusInvalidException.class)
                 .hasMessageContaining("超过委托数量");
+    }
+
+    @Test
+    void marketBuy_partialFill_tracksAmount() {
+        Order order = newMarketBuyOrder();
+        order.markPartiallyFilled(new BigDecimal("0.02"), new BigDecimal("2000"));
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.PARTIALLY_FILLED);
+        assertThat(order.getFilledQuantity()).isEqualByComparingTo("0.02");
+        assertThat(order.getFilledAmount()).isEqualByComparingTo("2000");
+    }
+
+    @Test
+    void marketBuy_fullFill_whenAmountReachesQuote() {
+        Order order = newMarketBuyOrder();
+        order.markPartiallyFilled(new BigDecimal("0.02"), new BigDecimal("2000"));
+        order.markPartiallyFilled(new BigDecimal("0.03"), new BigDecimal("3000"));
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.FILLED);
+        assertThat(order.getFilledQuantity()).isEqualByComparingTo("0.05");
+        assertThat(order.getFilledAmount()).isEqualByComparingTo("5000");
+    }
+
+    @Test
+    void marketBuy_fillExceedingQuote_throws() {
+        Order order = newMarketBuyOrder();
+        assertThatThrownBy(() -> order.markPartiallyFilled(new BigDecimal("0.1"), new BigDecimal("6000")))
+                .isInstanceOf(OrderStatusInvalidException.class)
+                .hasMessageContaining("成交金额超过冻结金额");
     }
 }

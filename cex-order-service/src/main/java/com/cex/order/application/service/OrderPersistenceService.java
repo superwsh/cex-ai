@@ -3,9 +3,13 @@ package com.cex.order.application.service;
 import com.cex.order.application.command.CreateOrderCommand;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.model.OrderFactory;
+import com.cex.order.domain.model.OrderSide;
+import com.cex.order.domain.model.OrderType;
 import com.cex.order.domain.repository.OrderRepository;
 import com.cex.order.domain.service.SymbolConfig;
 import lombok.RequiredArgsConstructor;
+
+import java.math.BigDecimal;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -23,6 +27,8 @@ public class OrderPersistenceService {
 
     @Transactional
     public CreateOrderResult createOrderInTx(CreateOrderCommand command, Long orderId, SymbolConfig config) {
+        OrderType type = command.getType();
+        OrderSide side = command.getSide();
         Order order = orderFactory.createPendingMatchOrder(
                 orderId,
                 command.getUserId(),
@@ -30,11 +36,11 @@ public class OrderPersistenceService {
                 command.getSymbol(),
                 command.getSide(),
                 command.getType(),
-                command.getType() == com.cex.order.domain.model.OrderType.MARKET
-                        ? null : command.getPrice(),
-                command.getType() == com.cex.order.domain.model.OrderType.MARKET
-                        && command.getSide() == com.cex.order.domain.model.OrderSide.SELL
-                        ? command.getQuantity() : command.getQuantity(),
+                type == OrderType.MARKET ? null : command.getPrice(),
+                // 市价买单 quantity 恒为 ZERO(冻结金额语义在 quoteAmount),避免 null 触发 NOT NULL 约束;
+                // 市价卖单仍以 quantity 为准
+                type == OrderType.MARKET && side == OrderSide.BUY
+                        ? BigDecimal.ZERO : command.getQuantity(),
                 command.getQuoteAmount(),
                 command.getTimeInForce());
         orderRepository.insert(order);
