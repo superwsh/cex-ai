@@ -36,6 +36,11 @@
             <groupId>com.cex</groupId>
             <artifactId>cex-common-dubbo</artifactId>
         </dependency>
+        <!-- Bean Validation:Controller 参数校验(@Valid/@NotBlank 等) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
         <!--
             ShardingSphere-JDBC 分库分表：订单表数据量大，按需启用
             1. 取消 cex-common-mysql/pom.xml 中 shardingsphere starter 的注释
