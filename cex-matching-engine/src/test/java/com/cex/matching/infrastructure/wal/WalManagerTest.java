@@ -2,16 +2,20 @@ package com.cex.matching.infrastructure.wal;
 
 import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
+import org.mockito.MockedStatic;
+import org.mockito.Mockito;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AccessDeniedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -128,6 +132,71 @@ class WalManagerTest {
                     .hasMessageContaining("WAL 根目录");
         }
         assertThat(Files.exists(outside.resolve("wal-000001.log"))).isFalse();
+    }
+
+    /**
+     * 验证已存在的链接属于测试构造错误，不能被误判为环境权限不足而跳过。
+     */
+    @Test
+    void throwsWhenSymbolicLinkAlreadyExists() throws Exception {
+        Path link = tempDir.resolve("existing-link");
+        Path target = tempDir.resolve("target");
+        try (MockedStatic<Files> files = Mockito.mockStatic(Files.class)) {
+            files.when(() -> Files.createSymbolicLink(link, target))
+                    .thenThrow(new java.nio.file.FileAlreadyExistsException(link.toString()));
+
+            assertThatThrownBy(() -> createSymbolicLinkOrSkip(link, target))
+                    .isInstanceOf(java.nio.file.FileAlreadyExistsException.class);
+        }
+    }
+
+    /**
+     * 验证其他 IO 失败必须暴露，不能让链接安全测试静默跳过。
+     */
+    @Test
+    void throwsWhenSymbolicLinkCreationFailsForOtherIOException() throws Exception {
+        Path link = tempDir.resolve("failed-link");
+        Path target = tempDir.resolve("target");
+        try (MockedStatic<Files> files = Mockito.mockStatic(Files.class)) {
+            files.when(() -> Files.createSymbolicLink(link, target))
+                    .thenThrow(new java.io.IOException("模拟路径 IO 失败"));
+
+            assertThatThrownBy(() -> createSymbolicLinkOrSkip(link, target))
+                    .isInstanceOf(java.io.IOException.class)
+                    .hasMessage("模拟路径 IO 失败");
+        }
+    }
+
+    /**
+     * 验证文件系统不支持符号链接时必须暴露异常，不能静默跳过。
+     */
+    @Test
+    void throwsWhenSymbolicLinksAreUnsupported() {
+        Path link = tempDir.resolve("unsupported-link");
+        Path target = tempDir.resolve("target");
+        try (MockedStatic<Files> files = Mockito.mockStatic(Files.class)) {
+            files.when(() -> Files.createSymbolicLink(link, target))
+                    .thenThrow(new UnsupportedOperationException("模拟文件系统不支持链接"));
+
+            assertThatThrownBy(() -> createSymbolicLinkOrSkip(link, target))
+                    .isInstanceOf(UnsupportedOperationException.class);
+        }
+    }
+
+    /**
+     * 验证安全策略拒绝创建链接时必须暴露异常，不能静默跳过。
+     */
+    @Test
+    void throwsWhenSymbolicLinkCreationIsRejectedBySecurityManager() {
+        Path link = tempDir.resolve("security-link");
+        Path target = tempDir.resolve("target");
+        try (MockedStatic<Files> files = Mockito.mockStatic(Files.class)) {
+            files.when(() -> Files.createSymbolicLink(link, target))
+                    .thenThrow(new SecurityException("模拟安全策略拒绝"));
+
+            assertThatThrownBy(() -> createSymbolicLinkOrSkip(link, target))
+                    .isInstanceOf(SecurityException.class);
+        }
     }
 
     /**
@@ -422,17 +491,47 @@ class WalManagerTest {
     }
 
     /**
-     * 创建目录符号链接；当前平台不支持或权限不足时跳过链接测试。
+     * 创建目录符号链接；仅在权限不足或 Windows 缺少创建链接特权时跳过链接测试。
      *
      * @param link 待创建的链接
      * @param target 链接目标目录
      */
-    private static void createSymbolicLinkOrSkip(Path link, Path target) {
+    private static void createSymbolicLinkOrSkip(Path link, Path target) throws java.io.IOException {
         try {
             Files.createSymbolicLink(link, target);
-        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
-            Assumptions.assumeTrue(false, "当前环境无法创建目录符号链接: " + e.getMessage());
+        } catch (AccessDeniedException e) {
+            skipForSymbolicLinkPermission(e);
+        } catch (java.io.IOException e) {
+            if (isWindowsSymbolicLinkPrivilegeFailure(e)) {
+                skipForSymbolicLinkPermission(e);
+            }
+            throw e;
         }
+    }
+
+    /**
+     * 判断是否为 Windows 创建符号链接时缺少特权的已知失败。
+     *
+     * @param exception 创建链接时发生的 IO 异常
+     * @return 是否应将该异常视为环境限制
+     */
+    private static boolean isWindowsSymbolicLinkPrivilegeFailure(java.io.IOException exception) {
+        String message = exception.getMessage();
+        if (!System.getProperty("os.name", "").startsWith("Windows") || message == null) {
+            return false;
+        }
+        String normalizedMessage = message.toLowerCase(Locale.ROOT);
+        return normalizedMessage.contains("required privilege is not held by the client")
+                || normalizedMessage.contains("客户端没有所需的特权");
+    }
+
+    /**
+     * 因环境权限不足中止链接测试。
+     *
+     * @param exception 创建链接时发生的权限异常
+     */
+    private static void skipForSymbolicLinkPermission(Exception exception) {
+        Assumptions.assumeTrue(false, "当前环境没有创建目录符号链接的权限: " + exception.getMessage());
     }
 
     /** 用于验证管理器资源生命周期的内存写入器。 */
