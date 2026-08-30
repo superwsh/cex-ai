@@ -15,7 +15,8 @@ public record MatchingCommand(
 
     public MatchingCommand {
         if (sequence < 1 || timestamp < 0 || blank(commandId) || blank(orderId)
-                || blank(userId) || blank(symbol) || commandType == null) {
+                || blank(userId) || blank(symbol) || commandType == null
+                || !numericIdentity(orderId) || !numericIdentity(userId)) {
             throw new IllegalArgumentException("撮合命令字段不合法");
         }
         if (commandType == CommandType.NEW_ORDER
@@ -26,5 +27,19 @@ public record MatchingCommand(
 
     private static boolean blank(String value) {
         return value == null || value.isBlank();
+    }
+
+    /**
+     * 校验订单和用户身份可安全转换为内部 long 编号。
+     *
+     * @param value 外部身份编号
+     * @return 可转换为正 long 时返回 true
+     */
+    private static boolean numericIdentity(String value) {
+        try {
+            return Long.parseLong(value) > 0L;
+        } catch (NumberFormatException exception) {
+            return false;
+        }
     }
 }

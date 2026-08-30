@@ -38,7 +38,7 @@ class WalCodecTest {
     void encodesNullSideAsJsonNull() {
         WalCodec codec = new WalCodec();
         String line = codec.encode(WalRecord.from(new MatchingCommand(
-                102L, "cmd-102", "ord-102", "usr-102", "BTCUSDT",
+                102L, "cmd-102", "102", "202", "BTCUSDT",
                 CommandType.CANCEL_ORDER, null, 0L, 0L, 1700000000000L)));
 
         assertThat(line).contains("\"side\":null");
@@ -65,8 +65,8 @@ class WalCodecTest {
     }
 
     private static MatchingCommand command(long sequence) {
-        return new MatchingCommand(sequence, "cmd-" + sequence, "ord-" + sequence,
-                "usr-" + sequence, "BTCUSDT", CommandType.NEW_ORDER,
+        return new MatchingCommand(sequence, "cmd-" + sequence, String.valueOf(sequence),
+                "202", "BTCUSDT", CommandType.NEW_ORDER,
                 MatchOrder.Side.BUY, 6500012L, 3L, 1700000000000L);
     }
 }

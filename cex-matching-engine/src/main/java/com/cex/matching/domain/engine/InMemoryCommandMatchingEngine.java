@@ -6,10 +6,10 @@ import com.cex.matching.domain.model.MatchOrder;
 import com.cex.matching.domain.model.MatchingCommand;
 import com.cex.matching.domain.model.OrderBook;
 
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 基于内存订单簿的命令执行器。
@@ -19,7 +19,7 @@ import java.util.Optional;
 public final class InMemoryCommandMatchingEngine implements CommandMatchingEngine {
 
     private final CommandNormalizer commandNormalizer;
-    private final Map<String, OrderBook> orderBooks = new HashMap<>();
+    private final Map<String, OrderBook> orderBooks = new ConcurrentHashMap<>();
 
     /**
      * 创建内存命令执行器。

@@ -48,10 +48,12 @@ class CommandNormalizerTest {
     }
 
     @Test
-    void rejectsCommandWithNonNumericIdentity() {
+    void rejectsCommandWithUnconfiguredSymbolBeforeMatching() {
         CommandNormalizer normalizer = new CommandNormalizer(Map.of(
                 "BTC_USDT", new DecimalScale(2, 8)));
-        MatchingCommand command = newOrder("not-a-number", "6500012", "123456789");
+        MatchingCommand command = new MatchingCommand(
+                7L, "command-4", "42", "10", "ETH_USDT", CommandType.NEW_ORDER,
+                MatchOrder.Side.BUY, 6500012L, 123456789L, 1_700_000_000_000L);
 
         assertThatIllegalArgumentException().isThrownBy(() -> normalizer.toMatchOrder(command));
     }

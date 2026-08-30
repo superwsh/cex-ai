@@ -485,7 +485,7 @@ class WalManagerTest {
      */
     private static WalRecord recordWithCommandId(long sequence, String symbol, String commandId) {
         return new WalRecord(sequence, commandId,
-                "ord-" + symbol + "-" + sequence, "usr-" + sequence, symbol,
+                String.valueOf(sequence), "202", symbol,
                 CommandType.NEW_ORDER, MatchOrder.Side.BUY, 6500012L, 3L,
                 1700000000000L, 0L);
     }

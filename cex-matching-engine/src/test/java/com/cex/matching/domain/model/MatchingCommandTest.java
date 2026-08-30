@@ -22,4 +22,14 @@ class MatchingCommandTest {
 
         assertThat(command.commandType()).isEqualTo(CommandType.CANCEL_ORDER);
     }
+
+    @Test
+    void rejectsNonNumericOrderOrUserIdentity() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new MatchingCommand(
+                1L, "command-3", "invalid", "10", "BTC_USDT", CommandType.NEW_ORDER,
+                MatchOrder.Side.BUY, 100L, 100L, 1_700_000_000_000L));
+        assertThatIllegalArgumentException().isThrownBy(() -> new MatchingCommand(
+                1L, "command-4", "1", "invalid", "BTC_USDT", CommandType.NEW_ORDER,
+                MatchOrder.Side.BUY, 100L, 100L, 1_700_000_000_000L));
+    }
 }

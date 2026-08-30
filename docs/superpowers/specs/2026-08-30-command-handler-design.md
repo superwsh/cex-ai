@@ -26,7 +26,9 @@ LIVE 模式固定执行：
 4. 调用 `CommandMatchingEngine.execute(command, LIVE)`。
 5. 领域执行成功后调用 `SequenceManager.advance`。
 
-WAL 或领域执行失败时不推进序列。SequenceGapException 原样传播，供后续 Kafka 消费者暂停相应分区和发起恢复。
+WAL 失败时不推进序列。WAL 成功后若领域执行或序列推进失败，处理器会熔断该交易对，拒绝后续 LIVE 命令，避免同一序列再次追加 WAL；后续 Recovery Service 完成恢复后才能继续消费。SequenceGapException 原样传播，供后续 Kafka 消费者暂停相应分区和发起恢复。
+
+同一交易对从序列校验到序列推进由细粒度交易对锁串行保护；不同交易对仍可并行。内存订单簿目录使用并发映射安全发布，但每个具体 `OrderBook` 仍仅由对应交易对的串行路径修改。
 
 ## 执行模式
 
@@ -35,9 +37,9 @@ WAL 或领域执行失败时不推进序列。SequenceGapException 原样传播�
 
 ## 错误和幂等
 
-- 无效命令、金额小数位缺失、无效订单编号等输入错误抛 IllegalArgumentException。
+- 无效命令、金额小数位缺失、无效订单编号等输入错误抛 IllegalArgumentException。当前内部订单簿按 `long` 索引，因此命令的 `orderId` 与 `userId` 必须是正数值字符串，并在命令创建时校验。
 - WAL 失败时领域执行器不得被调用。
-- 领域执行失败时 WAL 已持久化，序列保持不变，重启后由后续恢复服务重放。
+- 领域执行失败时 WAL 已持久化，序列保持不变，当前进程立即熔断该交易对，重启后由后续恢复服务重放。
 - 取消不存在订单属于确定性、幂等成功，仍可推进该合法序列。
 
 ## 测试

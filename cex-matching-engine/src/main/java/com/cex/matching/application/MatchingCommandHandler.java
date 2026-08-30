@@ -9,6 +9,8 @@ import com.cex.matching.infrastructure.wal.WalAppender;
 import com.cex.matching.infrastructure.wal.WalRecord;
 
 import java.util.Objects;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 编排可靠撮合命令处理的应用服务。
@@ -20,6 +22,8 @@ public final class MatchingCommandHandler {
     private final SequenceManager sequenceManager;
     private final WalAppender walAppender;
     private final CommandMatchingEngine commandMatchingEngine;
+    private final ConcurrentHashMap<String, Object> symbolLocks = new ConcurrentHashMap<>();
+    private final Set<String> recoveryRequiredSymbols = ConcurrentHashMap.newKeySet();
 
     /**
      * 创建命令处理器。
@@ -43,14 +47,32 @@ public final class MatchingCommandHandler {
      */
     public CommandHandlingResult handle(MatchingCommand command) {
         MatchingCommand matchingCommand = Objects.requireNonNull(command, "撮合命令不能为空");
-        if (sequenceManager.validate(matchingCommand.symbol(), matchingCommand.sequence())
+        synchronized (lockOf(matchingCommand.symbol())) {
+            ensureRecoveryNotRequired(matchingCommand.symbol());
+            return handleLiveCommand(matchingCommand);
+        }
+    }
+
+    /**
+     * 在同一交易对的串行临界区内按在线语义处理命令。
+     *
+     * @param command 已完成空值校验的撮合命令
+     * @return 命令已应用或因重复而忽略的处理结果
+     */
+    private CommandHandlingResult handleLiveCommand(MatchingCommand command) {
+        if (sequenceManager.validate(command.symbol(), command.sequence())
                 == SequenceValidation.DUPLICATE) {
             return CommandHandlingResult.DUPLICATE;
         }
-        walAppender.append(WalRecord.from(matchingCommand));
-        commandMatchingEngine.execute(matchingCommand, ExecutionMode.LIVE);
-        sequenceManager.advance(matchingCommand.symbol(), matchingCommand.sequence());
-        return CommandHandlingResult.APPLIED;
+        walAppender.append(WalRecord.from(command));
+        try {
+            commandMatchingEngine.execute(command, ExecutionMode.LIVE);
+            sequenceManager.advance(command.symbol(), command.sequence());
+            return CommandHandlingResult.APPLIED;
+        } catch (RuntimeException exception) {
+            recoveryRequiredSymbols.add(command.symbol());
+            throw new CommandRecoveryRequiredException(command.symbol(), exception);
+        }
     }
 
     /**
@@ -60,7 +82,34 @@ public final class MatchingCommandHandler {
      * @return 命令已应用的处理结果
      */
     public CommandHandlingResult replay(MatchingCommand command) {
-        commandMatchingEngine.execute(Objects.requireNonNull(command, "撮合命令不能为空"), ExecutionMode.REPLAY);
-        return CommandHandlingResult.APPLIED;
+        MatchingCommand matchingCommand = Objects.requireNonNull(command, "撮合命令不能为空");
+        synchronized (lockOf(matchingCommand.symbol())) {
+            commandMatchingEngine.execute(matchingCommand, ExecutionMode.REPLAY);
+            return CommandHandlingResult.APPLIED;
+        }
+    }
+
+    /**
+     * 获取交易对独占处理锁。
+     *
+     * 锁仅保护同一交易对的“序列校验至序列推进”完整临界区，不同交易对仍可并行处理；
+     * 这样可防止两个调用者同时接受同一序列而产生重复 WAL，代价是同一交易对必须串行执行。
+     *
+     * @param symbol 交易对
+     * @return 交易对对应的独占锁对象
+     */
+    private Object lockOf(String symbol) {
+        return symbolLocks.computeIfAbsent(symbol, ignored -> new Object());
+    }
+
+    /**
+     * 拒绝继续处理存在已持久化未完成命令的交易对。
+     *
+     * @param symbol 待处理交易对
+     */
+    private void ensureRecoveryNotRequired(String symbol) {
+        if (recoveryRequiredSymbols.contains(symbol)) {
+            throw new CommandRecoveryRequiredException(symbol);
+        }
     }
 }

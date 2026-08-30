@@ -1,6 +1,8 @@
 package com.cex.matching.application;
 
 import com.cex.matching.domain.engine.InMemoryCommandMatchingEngine;
+import com.cex.matching.domain.engine.CommandMatchingEngine;
+import com.cex.matching.domain.engine.ExecutionMode;
 import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
 import com.cex.matching.domain.model.MatchingCommand;
@@ -95,8 +97,26 @@ class MatchingCommandHandlerTest {
         assertThat(appendedRecords).isEmpty();
     }
 
+    @Test
+    void shouldBlockSymbolWithoutAppendingAgainWhenExecutionFailsAfterWalPersistence() {
+        InMemorySequenceManager sequenceManager = new InMemorySequenceManager();
+        List<WalRecord> appendedRecords = new ArrayList<>();
+        CommandMatchingEngine failingEngine = (command, executionMode) -> {
+            throw new IllegalStateException("领域执行失败");
+        };
+        MatchingCommandHandler handler = new MatchingCommandHandler(sequenceManager, appendedRecords::add, failingEngine);
+
+        assertThatThrownBy(() -> handler.handle(newOrder(1L, "11")))
+                .isInstanceOf(CommandRecoveryRequiredException.class);
+        assertThatThrownBy(() -> handler.handle(newOrder(1L, "11")))
+                .isInstanceOf(CommandRecoveryRequiredException.class);
+
+        assertThat(sequenceManager.current("BTC_USDT")).isZero();
+        assertThat(appendedRecords).extracting(WalRecord::sequence).containsExactly(1L);
+    }
+
     private MatchingCommandHandler handler(InMemorySequenceManager sequenceManager,
-                                           InMemoryCommandMatchingEngine engine,
+                                           CommandMatchingEngine engine,
                                            WalAppender walAppender) {
         return new MatchingCommandHandler(sequenceManager, walAppender, engine);
     }
