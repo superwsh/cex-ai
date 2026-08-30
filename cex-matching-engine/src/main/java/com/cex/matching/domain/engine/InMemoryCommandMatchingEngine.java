@@ -5,6 +5,8 @@ import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
 import com.cex.matching.domain.model.MatchingCommand;
 import com.cex.matching.domain.model.OrderBook;
+import com.cex.matching.domain.snapshot.MatchingSnapshot;
+import com.cex.matching.domain.snapshot.SnapshotOrder;
 
 import java.util.Map;
 import java.util.Objects;
@@ -56,6 +58,31 @@ public final class InMemoryCommandMatchingEngine implements CommandMatchingEngin
     public Optional<MatchOrder> findOrder(String symbol, long orderId) {
         OrderBook orderBook = orderBooks.get(symbol);
         return orderBook == null ? Optional.empty() : orderBook.getOrder(orderId);
+    }
+
+    /**
+     * 使用快照完整替换一个交易对的活动订单簿。
+     *
+     * @param snapshot 已校验的交易对快照
+     */
+    public void restore(MatchingSnapshot snapshot) {
+        MatchingSnapshot matchingSnapshot = Objects.requireNonNull(snapshot, "撮合快照不能为空");
+        OrderBook restoredBook = new OrderBook(matchingSnapshot.symbol());
+        matchingSnapshot.buyOrders().forEach(order -> addSnapshotOrder(restoredBook, matchingSnapshot.symbol(), order));
+        matchingSnapshot.sellOrders().forEach(order -> addSnapshotOrder(restoredBook, matchingSnapshot.symbol(), order));
+        orderBooks.put(matchingSnapshot.symbol(), restoredBook);
+    }
+
+    /**
+     * 将快照订单还原为内存订单并加入目标订单簿。
+     *
+     * @param orderBook 待恢复订单簿
+     * @param symbol 交易对
+     * @param order 快照订单
+     */
+    private void addSnapshotOrder(OrderBook orderBook, String symbol, SnapshotOrder order) {
+        orderBook.addOrder(new MatchOrder(order.orderId(), order.userId(), symbol, order.side(), order.price(),
+                order.quantity(), order.remainingQuantity(), order.sequence()));
     }
 
     /**
