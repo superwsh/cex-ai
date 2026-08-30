@@ -90,6 +90,30 @@ public final class MatchingCommandHandler {
     }
 
     /**
+     * 标记交易对正在恢复，阻止新的在线命令进入。
+     *
+     * @param symbol 正在恢复的交易对
+     */
+    void markRecoveryStarted(String symbol) {
+        String matchingSymbol = Objects.requireNonNull(symbol, "交易对不能为空");
+        synchronized (lockOf(matchingSymbol)) {
+            recoveryRequiredSymbols.add(matchingSymbol);
+        }
+    }
+
+    /**
+     * 标记交易对已成功恢复，允许新的在线命令进入。
+     *
+     * @param symbol 已恢复完成的交易对
+     */
+    void markRecoveryCompleted(String symbol) {
+        String matchingSymbol = Objects.requireNonNull(symbol, "交易对不能为空");
+        synchronized (lockOf(matchingSymbol)) {
+            recoveryRequiredSymbols.remove(matchingSymbol);
+        }
+    }
+
+    /**
      * 获取交易对独占处理锁。
      *
      * 锁仅保护同一交易对的“序列校验至序列推进”完整临界区，不同交易对仍可并行处理；

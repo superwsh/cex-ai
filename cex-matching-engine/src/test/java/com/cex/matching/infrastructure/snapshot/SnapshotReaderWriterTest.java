@@ -45,6 +45,16 @@ class SnapshotReaderWriterTest {
         assertThat(reader.readLatest(root)).contains(snapshot(7L));
     }
 
+    @Test
+    void shouldIgnoreSnapshotWhenFileSequenceDiffersFromPayloadSequence() {
+        SnapshotWriter writer = new SnapshotWriter(new SnapshotCodec());
+        SnapshotReader reader = new SnapshotReader(new SnapshotCodec());
+        writer.write(root.resolve("snapshot-7.json"), snapshot(7L));
+        writer.write(root.resolve("snapshot-8.json"), snapshot(6L));
+
+        assertThat(reader.readLatest(root)).contains(snapshot(7L));
+    }
+
     private MatchingSnapshot snapshot(long sequence) {
         SnapshotOrder buy = new SnapshotOrder(1L, 2L, MatchOrder.Side.BUY,
                 new BigDecimal("10.00"), new BigDecimal("2.0"), new BigDecimal("1.5"), sequence);

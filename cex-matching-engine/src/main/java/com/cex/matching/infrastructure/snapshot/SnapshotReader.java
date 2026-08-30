@@ -21,6 +21,18 @@ public final class SnapshotReader {
     public Optional<MatchingSnapshot> readLatest(Path directory) { if (Files.notExists(directory)) return Optional.empty(); try (Stream<Path> paths = Files.list(directory)) { return paths.filter(path -> FILE.matcher(path.getFileName().toString()).matches()).sorted(Comparator.comparingLong(this::sequence).reversed()).map(this::tryRead).flatMap(Optional::stream).findFirst(); } catch (IOException e) { throw new SnapshotException("扫描快照目录失败", e); } }
     /** @param path 快照文件 @return 文件名中的序列 */
     private long sequence(Path path) { var matcher = FILE.matcher(path.getFileName().toString()); matcher.matches(); return Long.parseLong(matcher.group(1)); }
-    /** @param path 快照文件 @return 可读取快照或空 */
-    private Optional<MatchingSnapshot> tryRead(Path path) { try { return Optional.of(read(path)); } catch (SnapshotException e) { return Optional.empty(); } }
+    /**
+     * 读取并校验快照文件名序列与正文序列一致。
+     *
+     * @param path 快照文件
+     * @return 可读取且序列一致的快照；损坏或不一致时为空
+     */
+    private Optional<MatchingSnapshot> tryRead(Path path) {
+        try {
+            MatchingSnapshot snapshot = read(path);
+            return snapshot.lastSequence() == sequence(path) ? Optional.of(snapshot) : Optional.empty();
+        } catch (SnapshotException e) {
+            return Optional.empty();
+        }
+    }
 }

@@ -74,6 +74,16 @@ public final class InMemoryCommandMatchingEngine implements CommandMatchingEngin
     }
 
     /**
+     * 清空指定交易对的内存订单簿，为恢复过程建立空基线。
+     *
+     * @param symbol 待清空的交易对
+     */
+    public void reset(String symbol) {
+        String matchingSymbol = Objects.requireNonNull(symbol, "交易对不能为空");
+        orderBooks.put(matchingSymbol, new OrderBook(matchingSymbol));
+    }
+
+    /**
      * 将快照订单还原为内存订单并加入目标订单簿。
      *
      * @param orderBook 待恢复订单簿
