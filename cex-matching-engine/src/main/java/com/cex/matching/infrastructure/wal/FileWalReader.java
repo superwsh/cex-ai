@@ -1,9 +1,11 @@
 package com.cex.matching.infrastructure.wal;
 
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -37,11 +39,11 @@ public final class FileWalReader implements WalReader {
         boolean incompleteTail = false;
         for (int index = 0; index < files.size(); index++) {
             WalReadResult fileResult = readFile(files.get(index));
-            if (fileResult.incompleteTail() && index != files.size() - 1) {
+            if (fileResult.incompleteTail() && hasLaterPhysicalRecord(files, index)) {
                 throw new WalCorruptionException("非最后 WAL 文件包含不完整尾部记录");
             }
             records.addAll(fileResult.records());
-            incompleteTail = fileResult.incompleteTail();
+            incompleteTail |= fileResult.incompleteTail();
         }
         verifyIncreasingSequences(records);
         return new WalReadResult(records, incompleteTail);
@@ -58,13 +60,39 @@ public final class FileWalReader implements WalReader {
 
     private List<Path> listWalFiles(Path directory) {
         try (Stream<Path> paths = Files.list(directory)) {
-            return paths.filter(Files::isRegularFile)
-                    .filter(path -> WAL_FILE_NAME.matcher(path.getFileName().toString()).matches())
-                    .sorted(Comparator.comparingInt(this::fileNumber))
-                    .toList();
+            List<Path> files = new ArrayList<>();
+            paths.forEach(path -> addWalFile(path, files));
+            files.sort(Comparator.comparingInt(this::fileNumber));
+            return List.copyOf(files);
         } catch (IOException e) {
             throw new WalException("扫描 WAL 目录失败", e);
+        } catch (UncheckedIOException e) {
+            throw new WalException("扫描 WAL 目录失败", e.getCause());
         }
+    }
+
+    private void addWalFile(Path path, List<Path> files) {
+        try {
+            BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
+            if (attributes.isRegularFile() && WAL_FILE_NAME.matcher(path.getFileName().toString()).matches()) {
+                files.add(path);
+            }
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private boolean hasLaterPhysicalRecord(List<Path> files, int currentIndex) {
+        for (int index = currentIndex + 1; index < files.size(); index++) {
+            try {
+                if (Files.size(files.get(index)) > 0L) {
+                    return true;
+                }
+            } catch (IOException e) {
+                throw new WalException("读取 WAL 文件元数据失败", e);
+            }
+        }
+        return false;
     }
 
     private WalReadResult decodeFile(byte[] content) {

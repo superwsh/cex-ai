@@ -62,6 +62,60 @@ class FileWalReaderTest {
                 .isInstanceOf(WalCorruptionException.class);
     }
 
+    @Test
+    void acceptsIncompleteTailWhenLaterWalFileIsEmpty() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path symbolDirectory = tempDir.resolve("BTCUSDT");
+        Files.createDirectories(symbolDirectory);
+        Files.writeString(symbolDirectory.resolve("wal-000001.log"), codec.encode(record(1L)) + "\n{\"sequence\":2",
+                StandardCharsets.UTF_8);
+        Files.writeString(symbolDirectory.resolve("wal-000002.log"), "", StandardCharsets.UTF_8);
+
+        WalReadResult result = new FileWalReader(tempDir, codec).read("BTCUSDT");
+
+        assertThat(result.records()).extracting(WalRecord::sequence).containsExactly(1L);
+        assertThat(result.incompleteTail()).isTrue();
+    }
+
+    @Test
+    void ignoresLastValidRecordWithoutTerminatingNewline() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path file = tempDir.resolve("wal-000001.log");
+        Files.writeString(file, codec.encode(record(1L)) + "\n" + codec.encode(record(2L)), StandardCharsets.UTF_8);
+
+        WalReadResult result = new FileWalReader(tempDir, codec).readFile(file);
+
+        assertThat(result.records()).extracting(WalRecord::sequence).containsExactly(1L);
+        assertThat(result.incompleteTail()).isTrue();
+    }
+
+    @Test
+    void ignoresLastCorruptRecordWithTerminatingNewline() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path file = tempDir.resolve("wal-000001.log");
+        Files.writeString(file, codec.encode(record(1L)) + "\n" + corruptChecksum(codec.encode(record(2L))) + "\n",
+                StandardCharsets.UTF_8);
+
+        WalReadResult result = new FileWalReader(tempDir, codec).readFile(file);
+
+        assertThat(result.records()).extracting(WalRecord::sequence).containsExactly(1L);
+        assertThat(result.incompleteTail()).isTrue();
+    }
+
+    @Test
+    void rejectsDecreasingSequenceAcrossWalFiles() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path symbolDirectory = tempDir.resolve("BTCUSDT");
+        Files.createDirectories(symbolDirectory);
+        Files.writeString(symbolDirectory.resolve("wal-000001.log"), codec.encode(record(2L)) + "\n",
+                StandardCharsets.UTF_8);
+        Files.writeString(symbolDirectory.resolve("wal-000002.log"), codec.encode(record(1L)) + "\n",
+                StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> new FileWalReader(tempDir, codec).read("BTCUSDT"))
+                .isInstanceOf(WalCorruptionException.class);
+    }
+
     private static String corruptChecksum(String encoded) {
         return encoded.replaceFirst("\\\"checksum\\\":\\d+", "\\\"checksum\\\":0");
     }
