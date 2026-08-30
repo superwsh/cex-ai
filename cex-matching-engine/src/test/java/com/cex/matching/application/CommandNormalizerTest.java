@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
 
 class CommandNormalizerTest {
 
@@ -22,6 +23,37 @@ class CommandNormalizerTest {
         assertThat(order.price()).isEqualByComparingTo("65000.12");
         assertThat(order.quantity()).isEqualByComparingTo("1.23456789");
         assertThat(order.remainingQuantity()).isEqualByComparingTo("1.23456789");
+    }
+
+    @Test
+    void rejectsOrderForSymbolWithoutDecimalScale() {
+        CommandNormalizer normalizer = new CommandNormalizer(Map.of(
+                "BTC_USDT", new DecimalScale(2, 8)));
+        MatchingCommand command = new MatchingCommand(
+                7L, "command-2", "42", "10", "ETH_USDT", CommandType.NEW_ORDER,
+                MatchOrder.Side.BUY, 6500012L, 123456789L, 1_700_000_000_000L);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> normalizer.toMatchOrder(command));
+    }
+
+    @Test
+    void rejectsCancelCommand() {
+        CommandNormalizer normalizer = new CommandNormalizer(Map.of(
+                "BTC_USDT", new DecimalScale(2, 8)));
+        MatchingCommand command = new MatchingCommand(
+                7L, "command-3", "42", "10", "BTC_USDT", CommandType.CANCEL_ORDER,
+                null, 0L, 0L, 1_700_000_000_000L);
+
+        assertThatIllegalArgumentException().isThrownBy(() -> normalizer.toMatchOrder(command));
+    }
+
+    @Test
+    void rejectsCommandWithNonNumericIdentity() {
+        CommandNormalizer normalizer = new CommandNormalizer(Map.of(
+                "BTC_USDT", new DecimalScale(2, 8)));
+        MatchingCommand command = newOrder("not-a-number", "6500012", "123456789");
+
+        assertThatIllegalArgumentException().isThrownBy(() -> normalizer.toMatchOrder(command));
     }
 
     private static MatchingCommand newOrder(String orderId, String price, String quantity) {
