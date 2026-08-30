@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
 
@@ -13,7 +14,8 @@ import java.util.zip.CRC32;
 
 /** 使用固定字段顺序和 CRC32 校验 WAL 记录。 */
 public final class WalCodec {
-    private final ObjectMapper mapper = new ObjectMapper();
+    private final ObjectMapper mapper = new ObjectMapper()
+            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS);
     private final JsonFactory factory = mapper.getFactory();
 
     public String encode(WalRecord record) {

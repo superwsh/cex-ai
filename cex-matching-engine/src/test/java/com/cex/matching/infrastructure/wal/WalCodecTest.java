@@ -55,6 +55,15 @@ class WalCodecTest {
                 .isInstanceOf(WalCorruptionException.class);
     }
 
+    @Test
+    void rejectsValidLineWithTrailingContent() {
+        WalCodec codec = new WalCodec();
+        String validLine = codec.encode(WalRecord.from(command(101L)));
+
+        assertThatThrownBy(() -> codec.decode(validLine + " trailing"))
+                .isInstanceOf(WalCorruptionException.class);
+    }
+
     private static MatchingCommand command(long sequence) {
         return new MatchingCommand(sequence, "cmd-" + sequence, "ord-" + sequence,
                 "usr-" + sequence, "BTCUSDT", CommandType.NEW_ORDER,
