@@ -98,6 +98,7 @@ public final class FileWalWriter implements WalWriter {
      */
     @Override
     public long writtenBytes() {
+        ensureHealthy();
         return writtenBytes;
     }
 
@@ -138,6 +139,11 @@ public final class FileWalWriter implements WalWriter {
         if (closed) {
             throw new WalException("WAL 写入器已关闭");
         }
+        ensureHealthy();
+    }
+
+    /** 确保写入器未进入不可恢复的 I/O 失败状态。 */
+    private void ensureHealthy() {
         if (failed) {
             throw new WalException("WAL 写入器已处于失败状态");
         }

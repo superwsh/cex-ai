@@ -144,8 +144,9 @@ public final class WalManager implements AutoCloseable {
      * @return 可追加的活动写入器
      */
     private ActiveWriter openActiveWriter(String symbol) {
-        int fileNumber = largestExistingFileNumber(root.resolve(symbol));
-        Path path = walPath(symbol, fileNumber);
+        Path symbolDirectory = WalPathPolicy.resolveSymbolDirectory(root, symbol, true);
+        int fileNumber = largestExistingFileNumber(symbolDirectory);
+        Path path = symbolDirectory.resolve("wal-%06d.log".formatted(fileNumber));
         repairRecoverableTail(path);
         return new ActiveWriter(fileNumber, writerFactory.open(path, codec));
     }
@@ -262,7 +263,8 @@ public final class WalManager implements AutoCloseable {
      * @return WAL 文件完整路径
      */
     private Path walPath(String symbol, int fileNumber) {
-        return root.resolve(symbol).resolve("wal-%06d.log".formatted(fileNumber));
+        return WalPathPolicy.resolveSymbolDirectory(root, symbol, true)
+                .resolve("wal-%06d.log".formatted(fileNumber));
     }
 
     /**

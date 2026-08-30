@@ -2,6 +2,7 @@ package com.cex.matching.infrastructure.wal;
 
 import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -15,7 +16,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class FileWalReaderTest {
 
-    @TempDir
+    @TempDir(factory = WalTestTempDirFactory.class)
     Path tempDir;
 
     @Test
@@ -128,6 +129,36 @@ class FileWalReaderTest {
         for (String unsafeSymbol : unsafeSymbols) {
             assertThatThrownBy(() -> reader.read(unsafeSymbol))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    /**
+     * 验证读取端拒绝解析后位于 WAL 根目录外的交易对链接目录。
+     */
+    @Test
+    void rejectsSymbolicLinkDirectoryOutsideWalRootWhenReading() throws Exception {
+        Path root = tempDir.resolve("root");
+        Path outside = tempDir.resolve("outside");
+        Files.createDirectories(root);
+        Files.createDirectories(outside);
+        createSymbolicLinkOrSkip(root.resolve("BTCUSDT"), outside);
+
+        assertThatThrownBy(() -> new FileWalReader(root, new WalCodec()).read("BTCUSDT"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("WAL 根目录");
+    }
+
+    /**
+     * 创建目录符号链接；当前平台不支持或权限不足时跳过链接测试。
+     *
+     * @param link 待创建的链接
+     * @param target 链接目标目录
+     */
+    private static void createSymbolicLinkOrSkip(Path link, Path target) {
+        try {
+            Files.createSymbolicLink(link, target);
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
+            Assumptions.assumeTrue(false, "当前环境无法创建目录符号链接: " + e.getMessage());
         }
     }
 

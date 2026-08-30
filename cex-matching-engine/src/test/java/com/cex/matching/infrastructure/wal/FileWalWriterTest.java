@@ -79,6 +79,10 @@ class FileWalWriterTest {
                 .isInstanceOf(WalException.class)
                 .hasMessageContaining("失败状态")
                 .hasNoCause();
+        assertThatThrownBy(writer::writtenBytes)
+                .isInstanceOf(WalException.class)
+                .hasMessageContaining("失败状态")
+                .hasNoCause();
     }
 
     /**

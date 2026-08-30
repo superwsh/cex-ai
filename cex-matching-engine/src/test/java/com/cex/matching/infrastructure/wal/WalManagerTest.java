@@ -2,21 +2,25 @@ package com.cex.matching.infrastructure.wal;
 
 import com.cex.matching.domain.model.CommandType;
 import com.cex.matching.domain.model.MatchOrder;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.channels.FileChannel;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class WalManagerTest {
 
-    @TempDir
+    @TempDir(factory = WalTestTempDirFactory.class)
     Path tempDir;
 
     /**
@@ -105,6 +109,25 @@ class WalManagerTest {
             assertThatThrownBy(() -> manager.append(record(1L, unsafeSymbol)))
                     .isInstanceOf(IllegalArgumentException.class);
         }
+    }
+
+    /**
+     * 验证写入端拒绝解析后位于 WAL 根目录外的交易对链接目录。
+     */
+    @Test
+    void rejectsSymbolicLinkDirectoryOutsideWalRootWhenWriting() throws Exception {
+        Path root = tempDir.resolve("root");
+        Path outside = tempDir.resolve("outside");
+        Files.createDirectories(root);
+        Files.createDirectories(outside);
+        createSymbolicLinkOrSkip(root.resolve("BTCUSDT"), outside);
+
+        try (WalManager manager = new WalManager(root, 10_000L, new WalCodec())) {
+            assertThatThrownBy(() -> manager.append(record(1L, "BTCUSDT")))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("WAL 根目录");
+        }
+        assertThat(Files.exists(outside.resolve("wal-000001.log"))).isFalse();
     }
 
     /**
@@ -232,14 +255,17 @@ class WalManagerTest {
      * 验证相对根目录规范化为绝对路径后，正常交易对仍可写入。
      */
     @Test
-    void acceptsNormalSymbolWhenRootIsCurrentRelativeDirectory() {
+    void acceptsNormalSymbolWhenRootIsCurrentRelativeDirectory() throws Exception {
+        Path relativeRoot = Path.of("target", "relative-wal-" + System.nanoTime());
         RecordingWriter writer = new RecordingWriter();
-        try (WalManager manager = new WalManager(Path.of("."), 10_000L, new WalCodec(),
+        try (WalManager manager = new WalManager(relativeRoot, 10_000L, new WalCodec(),
                 (path, codec) -> writer)) {
             manager.append(record(1L, "BTC_USDT"));
         }
 
         assertThat(writer.closeCount).isEqualTo(1);
+        Files.deleteIfExists(relativeRoot.resolve("BTC_USDT"));
+        Files.deleteIfExists(relativeRoot);
     }
 
     /**
@@ -301,6 +327,48 @@ class WalManagerTest {
     }
 
     /**
+     * 验证底层追加失败后管理器不会通过文件滚动绕过失败写入器。
+     */
+    @Test
+    void doesNotRollPastFailedFileWriter() throws Exception {
+        WalCodec codec = new WalCodec();
+        WalRecord firstRecord = record(1L, "BTCUSDT");
+        WalRecord failedRecord = record(2L, "BTCUSDT");
+        WalRecord oversizedRecord = recordWithCommandId(3L, "BTCUSDT", "x".repeat(1_024));
+        long threshold = encodedLineBytes(codec, firstRecord) + encodedLineBytes(codec, failedRecord);
+        AtomicInteger openCount = new AtomicInteger();
+        AtomicReference<FileChannel> firstChannel = new AtomicReference<>();
+        WalManager.WriterFactory factory = (path, walCodec) -> {
+            int currentOpenCount = openCount.incrementAndGet();
+            if (currentOpenCount > 1) {
+                return new RecordingWriter();
+            }
+            try {
+                Files.createDirectories(path.getParent());
+                FileChannel delegate = FileChannel.open(path, java.nio.file.StandardOpenOption.CREATE,
+                        java.nio.file.StandardOpenOption.WRITE, java.nio.file.StandardOpenOption.APPEND);
+                firstChannel.set(delegate);
+                return new FileWalWriter(path, walCodec, delegate);
+            } catch (java.io.IOException e) {
+                throw new AssertionError("构造受控 WAL 文件通道失败", e);
+            }
+        };
+
+        try (WalManager manager = new WalManager(tempDir, threshold, codec, factory)) {
+            manager.append(firstRecord);
+            firstChannel.get().close();
+            assertThatThrownBy(() -> manager.append(failedRecord))
+                    .isInstanceOf(WalException.class)
+                    .hasCauseInstanceOf(java.io.IOException.class);
+
+            assertThatThrownBy(() -> manager.append(oversizedRecord))
+                    .isInstanceOf(WalException.class)
+                    .hasMessageContaining("失败状态");
+        }
+        assertThat(openCount).hasValue(1);
+    }
+
+    /**
      * 计算记录写入 WAL 时完整行的 UTF-8 字节数。
      *
      * @param codec WAL 编解码器
@@ -335,10 +403,36 @@ class WalManagerTest {
      * @return 固定字段的 WAL 记录
      */
     private static WalRecord record(long sequence, String symbol) {
-        return new WalRecord(sequence, "cmd-" + symbol + "-" + sequence,
+        return recordWithCommandId(sequence, symbol, "cmd-" + symbol + "-" + sequence);
+    }
+
+    /**
+     * 构造带指定命令编号的 WAL 记录，用于控制编码行大小。
+     *
+     * @param sequence WAL 序列号
+     * @param symbol 交易对
+     * @param commandId 命令编号
+     * @return 固定字段的 WAL 记录
+     */
+    private static WalRecord recordWithCommandId(long sequence, String symbol, String commandId) {
+        return new WalRecord(sequence, commandId,
                 "ord-" + symbol + "-" + sequence, "usr-" + sequence, symbol,
                 CommandType.NEW_ORDER, MatchOrder.Side.BUY, 6500012L, 3L,
                 1700000000000L, 0L);
+    }
+
+    /**
+     * 创建目录符号链接；当前平台不支持或权限不足时跳过链接测试。
+     *
+     * @param link 待创建的链接
+     * @param target 链接目标目录
+     */
+    private static void createSymbolicLinkOrSkip(Path link, Path target) {
+        try {
+            Files.createSymbolicLink(link, target);
+        } catch (UnsupportedOperationException | java.io.IOException | SecurityException e) {
+            Assumptions.assumeTrue(false, "当前环境无法创建目录符号链接: " + e.getMessage());
+        }
     }
 
     /** 用于验证管理器资源生命周期的内存写入器。 */
@@ -388,4 +482,5 @@ class WalManagerTest {
             throw new WalException("模拟关闭失败");
         }
     }
+
 }

@@ -13,6 +13,7 @@ import java.util.Objects;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
+/** 从本地文件读取并校验 WAL 记录。 */
 public final class FileWalReader implements WalReader {
     private static final Pattern WAL_FILE_NAME = Pattern.compile("wal-(\\d{6})\\.log");
 
@@ -38,8 +39,7 @@ public final class FileWalReader implements WalReader {
      */
     @Override
     public WalReadResult read(String symbol) {
-        String canonicalSymbol = WalPathPolicy.validateSymbol(root, symbol);
-        Path directory = root.resolve(canonicalSymbol);
+        Path directory = WalPathPolicy.resolveSymbolDirectory(root, symbol, false);
         if (Files.notExists(directory)) {
             return new WalReadResult(List.of(), false);
         }

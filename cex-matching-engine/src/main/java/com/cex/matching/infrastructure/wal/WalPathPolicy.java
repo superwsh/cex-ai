@@ -1,5 +1,7 @@
 package com.cex.matching.infrastructure.wal;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Objects;
 import java.util.regex.Pattern;
@@ -54,4 +56,39 @@ final class WalPathPolicy {
         }
         return symbol;
     }
+
+    /**
+     * 解析交易对目录，并用真实路径确保链接或目录联接不能逃逸 WAL 根目录。
+     *
+     * @param root 已规范化的 WAL 根目录
+     * @param symbol 待解析的规范交易对
+     * @param createIfMissing 目录不存在时是否创建
+     * @return 已验证且不经过交易对链接的真实目录；读取不存在目录时返回直属词法路径
+     */
+    static Path resolveSymbolDirectory(Path root, String symbol, boolean createIfMissing) {
+        String canonicalSymbol = validateSymbol(root, symbol);
+        Path symbolDirectory = root.resolve(canonicalSymbol);
+        try {
+            if (createIfMissing) {
+                Files.createDirectories(root);
+            } else if (Files.notExists(root)) {
+                return symbolDirectory;
+            }
+            Path realRoot = root.toRealPath();
+            if (Files.notExists(symbolDirectory)) {
+                if (!createIfMissing) {
+                    return symbolDirectory;
+                }
+                Files.createDirectory(symbolDirectory);
+            }
+            Path realSymbolDirectory = symbolDirectory.toRealPath();
+            if (realSymbolDirectory.equals(realRoot) || !realSymbolDirectory.startsWith(realRoot)) {
+                throw new IllegalArgumentException("交易对真实目录必须位于 WAL 根目录下");
+            }
+            return realSymbolDirectory;
+        } catch (IOException e) {
+            throw new WalException("解析 WAL 交易对目录失败: " + symbolDirectory, e);
+        }
+    }
+
 }
