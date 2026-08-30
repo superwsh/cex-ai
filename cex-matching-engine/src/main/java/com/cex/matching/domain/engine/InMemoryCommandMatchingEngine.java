@@ -40,11 +40,10 @@ public final class InMemoryCommandMatchingEngine implements CommandMatchingEngin
     public void execute(MatchingCommand command, ExecutionMode executionMode) {
         MatchingCommand matchingCommand = Objects.requireNonNull(command, "撮合命令不能为空");
         Objects.requireNonNull(executionMode, "执行模式不能为空");
-        if (matchingCommand.commandType() == CommandType.NEW_ORDER) {
-            addOrder(matchingCommand);
-            return;
+        switch (matchingCommand.commandType()) {
+            case NEW_ORDER -> addOrder(matchingCommand);
+            case CANCEL_ORDER -> cancelOrder(matchingCommand);
         }
-        cancelOrder(matchingCommand);
     }
 
     /**

@@ -17,7 +17,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 /** 按交易对维护并滚动 WAL 文件的单线程管理器。 */
-public final class WalManager implements AutoCloseable {
+public final class WalManager implements AutoCloseable, WalAppender {
     private static final Pattern WAL_FILE_NAME = Pattern.compile("wal-(\\d{6})\\.log");
     private static final int MAX_FILE_NUMBER = 999_999;
 
@@ -62,6 +62,7 @@ public final class WalManager implements AutoCloseable {
      *
      * @param record 要持久化的 WAL 记录
      */
+    @Override
     public void append(WalRecord record) {
         ensureOpen();
         WalRecord walRecord = Objects.requireNonNull(record, "WAL 记录不能为空");
