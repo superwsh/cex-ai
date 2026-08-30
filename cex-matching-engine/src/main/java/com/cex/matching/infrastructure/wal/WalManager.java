@@ -20,6 +20,7 @@ public final class WalManager implements AutoCloseable {
     private final Path root;
     private final long maxFileSizeBytes;
     private final WalCodec codec;
+    private final WriterFactory writerFactory;
     private final Map<String, ActiveWriter> activeWriters = new HashMap<>();
     private boolean closed;
 
@@ -31,12 +32,25 @@ public final class WalManager implements AutoCloseable {
      * @param codec WAL 编解码器
      */
     public WalManager(Path root, long maxFileSizeBytes, WalCodec codec) {
-        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空");
+        this(root, maxFileSizeBytes, codec, FileWalWriter::new);
+    }
+
+    /**
+     * 创建带有受控写入器工厂的 WAL 管理器，仅供同包测试验证资源关闭行为。
+     *
+     * @param root WAL 根目录
+     * @param maxFileSizeBytes 单个 WAL 文件的最大字节数
+     * @param codec WAL 编解码器
+     * @param writerFactory WAL 写入器工厂
+     */
+    WalManager(Path root, long maxFileSizeBytes, WalCodec codec, WriterFactory writerFactory) {
+        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空").normalize();
         if (maxFileSizeBytes <= 0L) {
             throw new IllegalArgumentException("WAL 文件大小阈值必须大于零");
         }
         this.maxFileSizeBytes = maxFileSizeBytes;
         this.codec = Objects.requireNonNull(codec, "WAL 编解码器不能为空");
+        this.writerFactory = Objects.requireNonNull(writerFactory, "WAL 写入器工厂不能为空");
     }
 
     /**
@@ -114,7 +128,7 @@ public final class WalManager implements AutoCloseable {
         }
         activeWriter.writer().close();
         ActiveWriter nextWriter = new ActiveWriter(activeWriter.fileNumber() + 1,
-                new FileWalWriter(walPath(symbol, activeWriter.fileNumber() + 1), codec));
+                writerFactory.open(walPath(symbol, activeWriter.fileNumber() + 1), codec));
         activeWriters.put(symbol, nextWriter);
         return nextWriter;
     }
@@ -127,7 +141,7 @@ public final class WalManager implements AutoCloseable {
      */
     private ActiveWriter openActiveWriter(String symbol) {
         int fileNumber = largestExistingFileNumber(root.resolve(symbol));
-        return new ActiveWriter(fileNumber, new FileWalWriter(walPath(symbol, fileNumber), codec));
+        return new ActiveWriter(fileNumber, writerFactory.open(walPath(symbol, fileNumber), codec));
     }
 
     /**
@@ -178,6 +192,22 @@ public final class WalManager implements AutoCloseable {
         if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("交易对不能为空");
         }
+        if (symbol.equals(".") || symbol.equals("..") || symbol.contains("/") || symbol.contains("\\")) {
+            throw new IllegalArgumentException("交易对不能包含路径分隔符或相对路径");
+        }
+        Path symbolPath;
+        try {
+            symbolPath = Path.of(symbol);
+        } catch (RuntimeException e) {
+            throw new IllegalArgumentException("交易对目录名不合法", e);
+        }
+        if (symbolPath.isAbsolute()) {
+            throw new IllegalArgumentException("交易对不能使用绝对路径");
+        }
+        Path symbolDirectory = root.resolve(symbol).normalize();
+        if (!Objects.equals(symbolDirectory.getParent(), root)) {
+            throw new IllegalArgumentException("交易对目录必须位于 WAL 根目录下");
+        }
         return symbol;
     }
 
@@ -206,6 +236,20 @@ public final class WalManager implements AutoCloseable {
     }
 
     /** 活动 WAL 写入器及其文件编号。 */
-    private record ActiveWriter(int fileNumber, FileWalWriter writer) {
+    private record ActiveWriter(int fileNumber, WalWriter writer) {
+    }
+
+    /** WAL 写入器创建工厂，仅用于同包测试替换文件写入器。 */
+    @FunctionalInterface
+    interface WriterFactory {
+
+        /**
+         * 打开指定路径对应的 WAL 写入器。
+         *
+         * @param path WAL 文件路径
+         * @param codec WAL 编解码器
+         * @return 可用的 WAL 写入器
+         */
+        WalWriter open(Path path, WalCodec codec);
     }
 }
