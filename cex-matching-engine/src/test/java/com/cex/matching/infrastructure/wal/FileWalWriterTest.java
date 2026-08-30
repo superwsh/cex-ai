@@ -6,8 +6,10 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -53,6 +55,54 @@ class FileWalWriterTest {
 
         assertThatThrownBy(() -> writer.append(record(1L)))
                 .isInstanceOf(WalException.class);
+    }
+
+    /**
+     * 验证追加 I/O 失败后写入器进入失败状态，后续追加和刷盘立即失败。
+     */
+    @Test
+    void rejectsFurtherOperationsAfterAppendIoFailure() throws Exception {
+        Path path = tempDir.resolve("append-failure.log");
+        FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+        FileWalWriter writer = new FileWalWriter(path, new WalCodec(), channel);
+        channel.close();
+
+        assertThatThrownBy(() -> writer.append(record(1L)))
+                .isInstanceOf(WalException.class)
+                .hasCauseInstanceOf(java.io.IOException.class);
+        assertThatThrownBy(() -> writer.append(record(2L)))
+                .isInstanceOf(WalException.class)
+                .hasMessageContaining("失败状态")
+                .hasNoCause();
+        assertThatThrownBy(writer::flush)
+                .isInstanceOf(WalException.class)
+                .hasMessageContaining("失败状态")
+                .hasNoCause();
+    }
+
+    /**
+     * 验证刷盘 I/O 失败后写入器进入失败状态，后续刷盘和追加立即失败。
+     */
+    @Test
+    void rejectsFurtherOperationsAfterFlushIoFailure() throws Exception {
+        Path path = tempDir.resolve("flush-failure.log");
+        FileChannel channel = FileChannel.open(path, StandardOpenOption.CREATE,
+                StandardOpenOption.WRITE, StandardOpenOption.APPEND);
+        FileWalWriter writer = new FileWalWriter(path, new WalCodec(), channel);
+        channel.close();
+
+        assertThatThrownBy(writer::flush)
+                .isInstanceOf(WalException.class)
+                .hasCauseInstanceOf(java.io.IOException.class);
+        assertThatThrownBy(writer::flush)
+                .isInstanceOf(WalException.class)
+                .hasMessageContaining("失败状态")
+                .hasNoCause();
+        assertThatThrownBy(() -> writer.append(record(1L)))
+                .isInstanceOf(WalException.class)
+                .hasMessageContaining("失败状态")
+                .hasNoCause();
     }
 
     private static WalRecord record(long sequence) {

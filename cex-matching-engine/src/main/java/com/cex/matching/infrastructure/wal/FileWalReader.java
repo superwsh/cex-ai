@@ -19,17 +19,27 @@ public final class FileWalReader implements WalReader {
     private final Path root;
     private final WalCodec codec;
 
+    /**
+     * 创建基于安全根目录的 WAL 读取器。
+     *
+     * @param root WAL 根目录
+     * @param codec WAL 编解码器
+     */
     public FileWalReader(Path root, WalCodec codec) {
-        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空");
+        this.root = WalPathPolicy.normalizeRoot(root);
         this.codec = Objects.requireNonNull(codec, "WAL 编解码器不能为空");
     }
 
+    /**
+     * 按文件编号读取指定规范交易对的全部 WAL 记录。
+     *
+     * @param symbol 规范交易对
+     * @return 合并后的 WAL 读取结果
+     */
     @Override
     public WalReadResult read(String symbol) {
-        if (symbol == null || symbol.isBlank()) {
-            throw new IllegalArgumentException("交易对不能为空");
-        }
-        Path directory = root.resolve(symbol);
+        String canonicalSymbol = WalPathPolicy.validateSymbol(root, symbol);
+        Path directory = root.resolve(canonicalSymbol);
         if (Files.notExists(directory)) {
             return new WalReadResult(List.of(), false);
         }
@@ -49,6 +59,12 @@ public final class FileWalReader implements WalReader {
         return new WalReadResult(records, incompleteTail);
     }
 
+    /**
+     * 读取并校验单个 WAL 文件。
+     *
+     * @param file WAL 文件路径
+     * @return 文件内有效记录与尾部状态
+     */
     public WalReadResult readFile(Path file) {
         Objects.requireNonNull(file, "WAL 文件路径不能为空");
         try {
@@ -58,6 +74,12 @@ public final class FileWalReader implements WalReader {
         }
     }
 
+    /**
+     * 列出并按编号排序交易对目录内的合法 WAL 文件。
+     *
+     * @param directory 交易对目录
+     * @return 不可变的 WAL 文件列表
+     */
     private List<Path> listWalFiles(Path directory) {
         try (Stream<Path> paths = Files.list(directory)) {
             List<Path> files = new ArrayList<>();
@@ -71,6 +93,12 @@ public final class FileWalReader implements WalReader {
         }
     }
 
+    /**
+     * 将满足文件名与常规文件条件的路径加入结果。
+     *
+     * @param path 待检查路径
+     * @param files 收集结果
+     */
     private void addWalFile(Path path, List<Path> files) {
         try {
             BasicFileAttributes attributes = Files.readAttributes(path, BasicFileAttributes.class);
@@ -82,6 +110,13 @@ public final class FileWalReader implements WalReader {
         }
     }
 
+    /**
+     * 判断当前文件后是否仍有非空物理 WAL 文件。
+     *
+     * @param files 已排序 WAL 文件
+     * @param currentIndex 当前文件下标
+     * @return 后续存在非空文件时返回 true
+     */
     private boolean hasLaterPhysicalRecord(List<Path> files, int currentIndex) {
         for (int index = currentIndex + 1; index < files.size(); index++) {
             try {
@@ -95,6 +130,12 @@ public final class FileWalReader implements WalReader {
         return false;
     }
 
+    /**
+     * 按物理换行边界解码文件内容并识别可忽略尾部。
+     *
+     * @param content WAL 文件完整字节
+     * @return 有效记录与尾部状态
+     */
     private WalReadResult decodeFile(byte[] content) {
         List<WalRecord> records = new ArrayList<>();
         int start = 0;
@@ -124,6 +165,14 @@ public final class FileWalReader implements WalReader {
         return new WalReadResult(records, false);
     }
 
+    /**
+     * 将指定字节区间转换为 UTF-8 行并兼容 CRLF。
+     *
+     * @param content WAL 文件字节
+     * @param start 行起始下标
+     * @param end 行结束下标
+     * @return 不含换行符的文本行
+     */
     private String line(byte[] content, int start, int end) {
         int length = end - start;
         if (length > 0 && content[end - 1] == '\r') {
@@ -132,11 +181,22 @@ public final class FileWalReader implements WalReader {
         return new String(content, start, length, StandardCharsets.UTF_8);
     }
 
+    /**
+     * 从合法 WAL 文件名提取文件编号。
+     *
+     * @param file WAL 文件路径
+     * @return 六位十进制文件编号
+     */
     private int fileNumber(Path file) {
         String fileName = file.getFileName().toString();
         return Integer.parseInt(WAL_FILE_NAME.matcher(fileName).replaceFirst("$1"));
     }
 
+    /**
+     * 校验合并后的记录序列严格递增。
+     *
+     * @param records 合并后的 WAL 记录
+     */
     private void verifyIncreasingSequences(List<WalRecord> records) {
         long previous = 0L;
         boolean hasPrevious = false;

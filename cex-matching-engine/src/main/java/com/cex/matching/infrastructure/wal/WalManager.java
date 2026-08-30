@@ -1,10 +1,14 @@
 package com.cex.matching.infrastructure.wal;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -15,7 +19,6 @@ import java.util.stream.Stream;
 /** 按交易对维护并滚动 WAL 文件的单线程管理器。 */
 public final class WalManager implements AutoCloseable {
     private static final Pattern WAL_FILE_NAME = Pattern.compile("wal-(\\d{6})\\.log");
-    private static final Pattern CANONICAL_SYMBOL = Pattern.compile("[A-Z0-9_-]+");
     private static final int MAX_FILE_NUMBER = 999_999;
 
     private final Path root;
@@ -45,7 +48,7 @@ public final class WalManager implements AutoCloseable {
      * @param writerFactory WAL 写入器工厂
      */
     WalManager(Path root, long maxFileSizeBytes, WalCodec codec, WriterFactory writerFactory) {
-        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空").toAbsolutePath().normalize();
+        this.root = WalPathPolicy.normalizeRoot(root);
         if (maxFileSizeBytes <= 0L) {
             throw new IllegalArgumentException("WAL 文件大小阈值必须大于零");
         }
@@ -142,7 +145,86 @@ public final class WalManager implements AutoCloseable {
      */
     private ActiveWriter openActiveWriter(String symbol) {
         int fileNumber = largestExistingFileNumber(root.resolve(symbol));
-        return new ActiveWriter(fileNumber, writerFactory.open(walPath(symbol, fileNumber), codec));
+        Path path = walPath(symbol, fileNumber);
+        repairRecoverableTail(path);
+        return new ActiveWriter(fileNumber, writerFactory.open(path, codec));
+    }
+
+    /**
+     * 校验已有最大编号文件，仅截断可恢复的最后一条损坏或未换行记录。
+     *
+     * @param path 待续写的 WAL 文件
+     */
+    private void repairRecoverableTail(Path path) {
+        if (Files.notExists(path)) {
+            return;
+        }
+        try (FileChannel channel = FileChannel.open(path, StandardOpenOption.READ, StandardOpenOption.WRITE)) {
+            long fileSize = channel.size();
+            long lastValidBoundary = 0L;
+            long currentPosition = 0L;
+            ByteArrayOutputStream line = new ByteArrayOutputStream();
+            ByteBuffer buffer = ByteBuffer.allocate(8 * 1024);
+            while (channel.read(buffer) != -1) {
+                buffer.flip();
+                while (buffer.hasRemaining()) {
+                    byte value = buffer.get();
+                    currentPosition++;
+                    if (value == '\n') {
+                        if (!isValidLine(line.toByteArray())) {
+                            if (currentPosition != fileSize) {
+                                throw new WalCorruptionException("WAL 中间记录损坏，拒绝继续写入");
+                            }
+                            truncateAndForce(channel, lastValidBoundary);
+                            return;
+                        }
+                        lastValidBoundary = currentPosition;
+                        line.reset();
+                    } else {
+                        line.write(value);
+                    }
+                }
+                buffer.clear();
+            }
+            if (line.size() > 0) {
+                truncateAndForce(channel, lastValidBoundary);
+            }
+        } catch (WalCorruptionException e) {
+            throw e;
+        } catch (IOException e) {
+            throw new WalException("校验或修复 WAL 文件尾部失败: " + path, e);
+        }
+    }
+
+    /**
+     * 校验一条以换行结束的 WAL 记录内容。
+     *
+     * @param bytes 不含换行符的记录字节
+     * @return 记录 JSON 与校验和均有效时返回 true
+     */
+    private boolean isValidLine(byte[] bytes) {
+        int length = bytes.length;
+        if (length > 0 && bytes[length - 1] == '\r') {
+            length--;
+        }
+        try {
+            codec.decode(new String(bytes, 0, length, StandardCharsets.UTF_8));
+            return true;
+        } catch (WalCorruptionException e) {
+            return false;
+        }
+    }
+
+    /**
+     * 将文件截断到最后有效记录边界并强制持久化元数据。
+     *
+     * @param channel 待截断的 WAL 文件通道
+     * @param boundary 最后有效且以换行结束的字节边界
+     * @throws IOException 截断或刷盘失败时抛出
+     */
+    private void truncateAndForce(FileChannel channel, long boundary) throws IOException {
+        channel.truncate(boundary);
+        channel.force(true);
     }
 
     /**
@@ -190,29 +272,7 @@ public final class WalManager implements AutoCloseable {
      * @return 已校验的交易对
      */
     private String validateSymbol(String symbol) {
-        if (symbol == null || symbol.isBlank()) {
-            throw new IllegalArgumentException("交易对不能为空");
-        }
-        if (symbol.equals(".") || symbol.equals("..") || symbol.contains("/") || symbol.contains("\\")) {
-            throw new IllegalArgumentException("交易对不能包含路径分隔符或相对路径");
-        }
-        if (!CANONICAL_SYMBOL.matcher(symbol).matches()) {
-            throw new IllegalArgumentException("交易对必须使用大写字母、数字、下划线或连字符");
-        }
-        Path symbolPath;
-        try {
-            symbolPath = Path.of(symbol);
-        } catch (RuntimeException e) {
-            throw new IllegalArgumentException("交易对目录名不合法", e);
-        }
-        if (symbolPath.isAbsolute()) {
-            throw new IllegalArgumentException("交易对不能使用绝对路径");
-        }
-        Path symbolDirectory = root.resolve(symbol).normalize();
-        if (!Objects.equals(symbolDirectory.getParent(), root)) {
-            throw new IllegalArgumentException("交易对目录必须位于 WAL 根目录下");
-        }
-        return symbol;
+        return WalPathPolicy.validateSymbol(root, symbol);
     }
 
     /**

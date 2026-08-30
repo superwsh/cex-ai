@@ -128,6 +128,70 @@ class WalManagerTest {
     }
 
     /**
+     * 验证重启时截断半写 JSON 尾部，再从最后一个完整换行记录后继续追加。
+     */
+    @Test
+    void truncatesHalfWrittenTailBeforeAppendingAfterRestart() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path file = tempDir.resolve("BTC_USDT/wal-000001.log");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, codec.encode(record(1L, "BTC_USDT")) + "\n{\"sequence\":2",
+                StandardCharsets.UTF_8);
+
+        try (WalManager manager = new WalManager(tempDir, 10_000L, codec)) {
+            manager.append(record(2L, "BTC_USDT"));
+        }
+
+        assertThat(new FileWalReader(tempDir, codec).read("BTC_USDT").records())
+                .extracting(WalRecord::sequence)
+                .containsExactly(1L, 2L);
+    }
+
+    /**
+     * 验证重启时截断最后一条校验失败记录，再保留既有记录并追加新记录。
+     */
+    @Test
+    void truncatesChecksumFailedTailBeforeAppendingAfterRestart() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path file = tempDir.resolve("BTC_USDT/wal-000001.log");
+        Files.createDirectories(file.getParent());
+        String corruptTail = codec.encode(record(2L, "BTC_USDT"))
+                .replaceFirst("\\\"checksum\\\":\\d+", "\\\"checksum\\\":0");
+        Files.writeString(file, codec.encode(record(1L, "BTC_USDT")) + "\n" + corruptTail + "\n",
+                StandardCharsets.UTF_8);
+
+        try (WalManager manager = new WalManager(tempDir, 10_000L, codec)) {
+            manager.append(record(2L, "BTC_USDT"));
+        }
+
+        assertThat(new FileWalReader(tempDir, codec).read("BTC_USDT").records())
+                .extracting(WalRecord::sequence)
+                .containsExactly(1L, 2L);
+    }
+
+    /**
+     * 验证最大编号文件中的中间损坏会阻止重启续写。
+     */
+    @Test
+    void rejectsRestartAppendWhenLatestFileContainsMiddleCorruption() throws Exception {
+        WalCodec codec = new WalCodec();
+        Path file = tempDir.resolve("BTC_USDT/wal-000001.log");
+        Files.createDirectories(file.getParent());
+        String corruptMiddle = codec.encode(record(1L, "BTC_USDT"))
+                .replaceFirst("\\\"checksum\\\":\\d+", "\\\"checksum\\\":0");
+        Files.writeString(file, corruptMiddle + "\n" + codec.encode(record(2L, "BTC_USDT")) + "\n",
+                StandardCharsets.UTF_8);
+
+        try (WalManager manager = new WalManager(tempDir, 10_000L, codec)) {
+            assertThatThrownBy(() -> manager.append(record(3L, "BTC_USDT")))
+                    .isInstanceOf(WalCorruptionException.class);
+        }
+
+        assertThat(Files.readString(file, StandardCharsets.UTF_8))
+                .doesNotContain("\"sequence\":3");
+    }
+
+    /**
      * 验证重新打开后，已达到阈值的最大编号文件会在追加前滚动。
      */
     @Test

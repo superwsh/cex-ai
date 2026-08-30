@@ -15,7 +15,14 @@ public final class FileWalWriter implements WalWriter {
     private final FileChannel channel;
     private long writtenBytes;
     private boolean closed;
+    private boolean failed;
 
+    /**
+     * 创建追加模式的 WAL 文件写入器。
+     *
+     * @param path WAL 文件路径
+     * @param codec WAL 编解码器
+     */
     public FileWalWriter(Path path, WalCodec codec) {
         Path walPath = Objects.requireNonNull(path, "WAL 文件路径不能为空");
         this.codec = Objects.requireNonNull(codec, "WAL 编解码器不能为空");
@@ -32,9 +39,32 @@ public final class FileWalWriter implements WalWriter {
         }
     }
 
+    /**
+     * 使用受控文件通道创建 WAL 写入器，供同包测试制造真实 I/O 失败。
+     *
+     * @param path WAL 文件路径
+     * @param codec WAL 编解码器
+     * @param channel 已打开的文件通道
+     */
+    FileWalWriter(Path path, WalCodec codec, FileChannel channel) {
+        Objects.requireNonNull(path, "WAL 文件路径不能为空");
+        this.codec = Objects.requireNonNull(codec, "WAL 编解码器不能为空");
+        this.channel = Objects.requireNonNull(channel, "WAL 文件通道不能为空");
+        try {
+            writtenBytes = channel.size();
+        } catch (IOException e) {
+            throw new WalException("读取 WAL 文件大小失败", e);
+        }
+    }
+
+    /**
+     * 追加并强制刷盘一条 WAL 记录。
+     *
+     * @param record 待写入记录
+     */
     @Override
-    public synchronized void append(WalRecord record) {
-        ensureOpen();
+    public void append(WalRecord record) {
+        ensureUsable();
         ByteBuffer bytes = StandardCharsets.UTF_8.encode(codec.encode(record) + "\n");
         int byteCount = bytes.remaining();
         try {
@@ -44,35 +74,47 @@ public final class FileWalWriter implements WalWriter {
             channel.force(true);
             writtenBytes += byteCount;
         } catch (IOException e) {
+            failed = true;
             throw new WalException("追加 WAL 记录失败", e);
         }
     }
 
+    /** 强制将已追加数据刷入稳定存储。 */
     @Override
-    public synchronized void flush() {
-        ensureOpen();
+    public void flush() {
+        ensureUsable();
         try {
             channel.force(true);
         } catch (IOException e) {
+            failed = true;
             throw new WalException("刷盘 WAL 文件失败", e);
         }
     }
 
+    /**
+     * 返回成功刷盘后的累计文件字节数。
+     *
+     * @return 已确认写入的文件字节数
+     */
     @Override
-    public synchronized long writtenBytes() {
+    public long writtenBytes() {
         return writtenBytes;
     }
 
+    /** 关闭文件通道；失败状态下不再尝试额外刷盘。 */
     @Override
-    public synchronized void close() {
+    public void close() {
         if (closed) {
             return;
         }
         WalException failure = null;
-        try {
-            channel.force(true);
-        } catch (IOException e) {
-            failure = new WalException("刷盘 WAL 文件失败", e);
+        if (!failed) {
+            try {
+                channel.force(true);
+            } catch (IOException e) {
+                failed = true;
+                failure = new WalException("刷盘 WAL 文件失败", e);
+            }
         }
         try {
             channel.close();
@@ -91,9 +133,13 @@ public final class FileWalWriter implements WalWriter {
         }
     }
 
-    private void ensureOpen() {
+    /** 确保写入器仍处于可写且未失败状态。 */
+    private void ensureUsable() {
         if (closed) {
             throw new WalException("WAL 写入器已关闭");
+        }
+        if (failed) {
+            throw new WalException("WAL 写入器已处于失败状态");
         }
     }
 }

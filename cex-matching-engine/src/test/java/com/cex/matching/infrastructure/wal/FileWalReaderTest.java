@@ -116,6 +116,21 @@ class FileWalReaderTest {
                 .isInstanceOf(WalCorruptionException.class);
     }
 
+    /**
+     * 验证读取端拒绝路径逃逸、绝对路径、分隔符及非规范大小写交易对。
+     */
+    @Test
+    void rejectsUnsafeOrNonCanonicalSymbolsBeforeReading() {
+        FileWalReader reader = new FileWalReader(tempDir, new WalCodec());
+        List<String> unsafeSymbols = List.of(".", "..", "../escape", "BTC/USDT", "BTC\\USDT",
+                "btc_usdt", "Btc_Usdt", tempDir.resolve("outside").toAbsolutePath().toString());
+
+        for (String unsafeSymbol : unsafeSymbols) {
+            assertThatThrownBy(() -> reader.read(unsafeSymbol))
+                    .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
     private static String corruptChecksum(String encoded) {
         return encoded.replaceFirst("\\\"checksum\\\":\\d+", "\\\"checksum\\\":0");
     }
