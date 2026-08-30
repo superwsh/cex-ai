@@ -65,4 +65,12 @@ class InMemorySequenceManagerTest {
         assertThatIllegalStateException().isThrownBy(() -> sequenceManager.advance("BTC_USDT", 3L));
         assertThat(sequenceManager.current("BTC_USDT")).isEqualTo(1L);
     }
+
+    @Test
+    void restoresSequenceWatermarkForRecovery() {
+        sequenceManager.restore("BTC_USDT", 7L);
+
+        assertThat(sequenceManager.current("BTC_USDT")).isEqualTo(7L);
+        assertThat(sequenceManager.validate("BTC_USDT", 8L)).isEqualTo(SequenceValidation.ACCEPTED);
+    }
 }
