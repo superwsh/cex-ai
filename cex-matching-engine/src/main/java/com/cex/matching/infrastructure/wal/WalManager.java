@@ -15,6 +15,7 @@ import java.util.stream.Stream;
 /** 按交易对维护并滚动 WAL 文件的单线程管理器。 */
 public final class WalManager implements AutoCloseable {
     private static final Pattern WAL_FILE_NAME = Pattern.compile("wal-(\\d{6})\\.log");
+    private static final Pattern CANONICAL_SYMBOL = Pattern.compile("[A-Z0-9_-]+");
     private static final int MAX_FILE_NUMBER = 999_999;
 
     private final Path root;
@@ -44,7 +45,7 @@ public final class WalManager implements AutoCloseable {
      * @param writerFactory WAL 写入器工厂
      */
     WalManager(Path root, long maxFileSizeBytes, WalCodec codec, WriterFactory writerFactory) {
-        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空").normalize();
+        this.root = Objects.requireNonNull(root, "WAL 根目录不能为空").toAbsolutePath().normalize();
         if (maxFileSizeBytes <= 0L) {
             throw new IllegalArgumentException("WAL 文件大小阈值必须大于零");
         }
@@ -194,6 +195,9 @@ public final class WalManager implements AutoCloseable {
         }
         if (symbol.equals(".") || symbol.equals("..") || symbol.contains("/") || symbol.contains("\\")) {
             throw new IllegalArgumentException("交易对不能包含路径分隔符或相对路径");
+        }
+        if (!CANONICAL_SYMBOL.matcher(symbol).matches()) {
+            throw new IllegalArgumentException("交易对必须使用大写字母、数字、下划线或连字符");
         }
         Path symbolPath;
         try {

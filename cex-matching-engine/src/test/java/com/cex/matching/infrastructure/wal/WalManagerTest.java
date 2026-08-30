@@ -96,7 +96,7 @@ class WalManagerTest {
      */
     @Test
     void rejectsUnsafeSymbolDirectorySegments() {
-        List<String> unsafeSymbols = List.of("../escape", "BTC/USDT", "BTC\\USDT",
+        List<String> unsafeSymbols = List.of("../escape", "BTC/USDT", "BTC\\USDT", "btc_usdt", "Btc_Usdt",
                 tempDir.resolve("outside").toAbsolutePath().toString());
         WalManager.WriterFactory factory = (path, codec) -> new RecordingWriter();
         WalManager manager = new WalManager(tempDir, 10_000L, new WalCodec(), factory);
@@ -111,19 +111,20 @@ class WalManagerTest {
      * 验证重新打开管理器后会续写已有的最大编号 WAL 文件。
      */
     @Test
-    void appendsToLargestExistingFileAfterManagerRestart() {
+    void appendsToLargestExistingFileAfterManagerRestart() throws Exception {
         WalCodec codec = new WalCodec();
+        Path symbolDirectory = tempDir.resolve("BTC_USDT");
+        writeRecord(symbolDirectory.resolve("wal-000001.log"), codec, record(1L, "BTC_USDT"));
+        writeRecord(symbolDirectory.resolve("wal-000002.log"), codec, record(2L, "BTC_USDT"));
         try (WalManager manager = new WalManager(tempDir, 10_000L, codec)) {
-            manager.append(record(1L, "BTC_USDT"));
-        }
-        try (WalManager manager = new WalManager(tempDir, 10_000L, codec)) {
-            manager.append(record(2L, "BTC_USDT"));
+            manager.append(record(3L, "BTC_USDT"));
         }
 
-        assertThat(Files.exists(tempDir.resolve("BTC_USDT/wal-000002.log"))).isFalse();
+        assertThat(Files.readAllLines(symbolDirectory.resolve("wal-000001.log"))).hasSize(1);
+        assertThat(Files.readAllLines(symbolDirectory.resolve("wal-000002.log"))).hasSize(2);
         assertThat(new FileWalReader(tempDir, codec).read("BTC_USDT").records())
                 .extracting(WalRecord::sequence)
-                .containsExactly(1L, 2L);
+                .containsExactly(1L, 2L, 3L);
     }
 
     /**
@@ -152,13 +153,29 @@ class WalManagerTest {
     @Test
     void doesNotRollWhenCompleteLinesExactlyReachThreshold() {
         WalCodec codec = new WalCodec();
-        long lineBytes = encodedLineBytes(codec, record(1L, "BTC_USDT"));
-        try (WalManager manager = new WalManager(tempDir, lineBytes * 2L, codec)) {
-            manager.append(record(1L, "BTC_USDT"));
-            manager.append(record(2L, "BTC_USDT"));
+        WalRecord firstRecord = record(1L, "BTC_USDT");
+        WalRecord secondRecord = record(2L, "BTC_USDT");
+        long threshold = encodedLineBytes(codec, firstRecord) + encodedLineBytes(codec, secondRecord);
+        try (WalManager manager = new WalManager(tempDir, threshold, codec)) {
+            manager.append(firstRecord);
+            manager.append(secondRecord);
         }
 
         assertThat(Files.exists(tempDir.resolve("BTC_USDT/wal-000002.log"))).isFalse();
+    }
+
+    /**
+     * 验证相对根目录规范化为绝对路径后，正常交易对仍可写入。
+     */
+    @Test
+    void acceptsNormalSymbolWhenRootIsCurrentRelativeDirectory() {
+        RecordingWriter writer = new RecordingWriter();
+        try (WalManager manager = new WalManager(Path.of("."), 10_000L, new WalCodec(),
+                (path, codec) -> writer)) {
+            manager.append(record(1L, "BTC_USDT"));
+        }
+
+        assertThat(writer.closeCount).isEqualTo(1);
     }
 
     /**
@@ -228,6 +245,22 @@ class WalManagerTest {
      */
     private static long encodedLineBytes(WalCodec codec, WalRecord record) {
         return codec.encode(record).getBytes(StandardCharsets.UTF_8).length + 1L;
+    }
+
+    /**
+     * 将固定记录写入指定 WAL 文件以构造重启场景。
+     *
+     * @param file WAL 文件
+     * @param codec WAL 编解码器
+     * @param record 要写入的记录
+     */
+    private static void writeRecord(Path file, WalCodec codec, WalRecord record) {
+        try {
+            Files.createDirectories(file.getParent());
+            Files.writeString(file, codec.encode(record) + "\n", StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new AssertionError("构造 WAL 测试文件失败", e);
+        }
     }
 
     /**
