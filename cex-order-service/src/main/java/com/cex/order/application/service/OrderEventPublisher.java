@@ -1,6 +1,7 @@
 package com.cex.order.application.service;
 
 import com.cex.order.domain.model.Order;
+import com.cex.order.domain.service.SymbolConfig;
 import com.cex.order.infrastructure.persistence.entity.OrderEventOutboxPO;
 import com.cex.order.infrastructure.repository.MatchingCommandSequenceRepository;
 import com.cex.order.infrastructure.repository.OutboxRepository;
@@ -37,7 +38,7 @@ public class OrderEventPublisher {
      *
      * @param order 已在同一事务中创建的订单
      */
-    public void publishOrderCreated(Order order) {
+    public void publishOrderCreated(Order order, SymbolConfig symbolConfig) {
         String eventId = UUID.randomUUID().toString();
         long sequence = matchingCommandSequenceRepository.allocateNext(order.getSymbol());
         OrderEvent event = OrderEvent.builder()
@@ -47,6 +48,8 @@ public class OrderEventPublisher {
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())
                 .symbol(order.getSymbol())
+                .baseAsset(symbolConfig.getBaseCurrency())
+                .quoteAsset(symbolConfig.getQuoteCurrency())
                 .action(OrderEvent.Action.SUBMIT)
                 .side(OrderEvent.OrderSide.valueOf(order.getSide().name()))
                 .type(OrderEvent.OrderType.valueOf(order.getType().name()))
@@ -64,7 +67,7 @@ public class OrderEventPublisher {
      *
      * @param order 已在同一事务中完成撤单状态变更的订单
      */
-    public void publishOrderCanceled(Order order) {
+    public void publishOrderCanceled(Order order, SymbolConfig symbolConfig) {
         String eventId = UUID.randomUUID().toString();
         long sequence = matchingCommandSequenceRepository.allocateNext(order.getSymbol());
         OrderEvent event = OrderEvent.builder()
@@ -74,6 +77,8 @@ public class OrderEventPublisher {
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())
                 .symbol(order.getSymbol())
+                .baseAsset(symbolConfig.getBaseCurrency())
+                .quoteAsset(symbolConfig.getQuoteCurrency())
                 .action(OrderEvent.Action.CANCEL)
                 .side(OrderEvent.OrderSide.valueOf(order.getSide().name()))
                 .type(OrderEvent.OrderType.valueOf(order.getType().name()))

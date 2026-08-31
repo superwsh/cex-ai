@@ -12,8 +12,12 @@ public final class Trade {
 
     private final String tradeId;
     private final String symbol;
+    private final String baseAsset;
+    private final String quoteAsset;
     private final long makerOrderId;
     private final long takerOrderId;
+    private final long makerUserId;
+    private final long takerUserId;
     private final OrderSide makerSide;
     private final BigDecimal price;
     private final BigDecimal quantity;
@@ -35,13 +39,19 @@ public final class Trade {
      * @param sequence 撮合序号
      */
     @Builder
-    private Trade(String tradeId, String symbol, long makerOrderId, long takerOrderId, OrderSide makerSide,
+    private Trade(String tradeId, String symbol, String baseAsset, String quoteAsset,
+                  long makerOrderId, long takerOrderId, long makerUserId, long takerUserId, OrderSide makerSide,
                   BigDecimal price, BigDecimal quantity, Instant timestamp, long sequence) {
-        validate(tradeId, symbol, makerOrderId, takerOrderId, makerSide, price, quantity, timestamp, sequence);
+        validate(tradeId, symbol, makerOrderId, takerOrderId, makerUserId, takerUserId,
+                makerSide, price, quantity, timestamp, sequence);
         this.tradeId = tradeId;
         this.symbol = symbol;
+        this.baseAsset = baseAsset;
+        this.quoteAsset = quoteAsset;
         this.makerOrderId = makerOrderId;
         this.takerOrderId = takerOrderId;
+        this.makerUserId = makerUserId;
+        this.takerUserId = takerUserId;
         this.makerSide = makerSide;
         this.price = price;
         this.quantity = quantity;
@@ -58,12 +68,28 @@ public final class Trade {
         return symbol;
     }
 
+    public String getBaseAsset() {
+        return baseAsset;
+    }
+
+    public String getQuoteAsset() {
+        return quoteAsset;
+    }
+
     public long getMakerOrderId() {
         return makerOrderId;
     }
 
     public long getTakerOrderId() {
         return takerOrderId;
+    }
+
+    public long getMakerUserId() {
+        return makerUserId;
+    }
+
+    public long getTakerUserId() {
+        return takerUserId;
     }
 
     /**
@@ -96,10 +122,11 @@ public final class Trade {
     }
 
     private static void validate(String tradeId, String symbol, long makerOrderId, long takerOrderId,
+                                 long makerUserId, long takerUserId,
                                  OrderSide makerSide, BigDecimal price, BigDecimal quantity,
                                  Instant timestamp, long sequence) {
         if (tradeId == null || tradeId.isBlank() || makerOrderId <= 0
-                || takerOrderId <= 0 || sequence < 0) {
+                || takerOrderId <= 0 || makerUserId <= 0 || takerUserId <= 0 || sequence < 0) {
             throw new IllegalArgumentException("成交标识和序号必须有效");
         }
         if (symbol == null || symbol.isBlank()) {

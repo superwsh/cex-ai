@@ -3,7 +3,6 @@ package com.cex.order.infrastructure.asset;
 import com.cex.common.core.exception.BizException;
 import com.cex.order.common.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
 import java.util.Map;
@@ -16,7 +15,6 @@ import java.util.concurrent.ConcurrentHashMap;
  * TODO: 资产服务就绪后替换为 Dubbo 实现,删除本类。
  */
 @Slf4j
-@Component
 public class MockAccountServiceClient implements AccountServiceClient {
 
     /** userId:currency -> 可用余额 */

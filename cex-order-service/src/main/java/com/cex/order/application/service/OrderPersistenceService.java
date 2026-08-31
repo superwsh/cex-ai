@@ -44,7 +44,7 @@ public class OrderPersistenceService {
                 command.getQuoteAmount(),
                 command.getTimeInForce());
         orderRepository.insert(order);
-        eventPublisher.publishOrderCreated(order);
+        eventPublisher.publishOrderCreated(order, config);
         return CreateOrderResult.of(order);
     }
 
@@ -52,9 +52,9 @@ public class OrderPersistenceService {
      * 取消落库:状态置 CANCELED + 写取消事件,同一事务
      */
     @Transactional
-    public void cancelInTx(Order order) {
+    public void cancelInTx(Order order, SymbolConfig config) {
         order.setUpdatedAt(java.time.LocalDateTime.now());
         orderRepository.update(order);
-        eventPublisher.publishOrderCanceled(order);
+        eventPublisher.publishOrderCanceled(order, config);
     }
 }

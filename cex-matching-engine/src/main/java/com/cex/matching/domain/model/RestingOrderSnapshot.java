@@ -9,7 +9,8 @@ import java.time.Instant;
 import java.util.Objects;
 
 /** 快照中保存的限价挂单状态，可无损恢复订单簿顺序。 */
-public record RestingOrderSnapshot(long orderId, long userId, String symbol, OrderSide side,
+public record RestingOrderSnapshot(long orderId, long userId, String symbol, String baseAsset, String quoteAsset,
+                                   OrderSide side,
                                    BigDecimal price, BigDecimal quantity, BigDecimal remainingQuantity,
                                    TimeInForce timeInForce, Instant createdAt, long sequence) {
 
@@ -32,6 +33,14 @@ public record RestingOrderSnapshot(long orderId, long userId, String symbol, Ord
         Objects.requireNonNull(createdAt, "快照创建时间不能为空");
     }
 
+    /** 兼容未携带资产信息的历史快照；恢复后不可产生可结算的新成交。 */
+    public RestingOrderSnapshot(long orderId, long userId, String symbol, OrderSide side,
+                                BigDecimal price, BigDecimal quantity, BigDecimal remainingQuantity,
+                                TimeInForce timeInForce, Instant createdAt, long sequence) {
+        this(orderId, userId, symbol, null, null, side, price, quantity, remainingQuantity,
+                timeInForce, createdAt, sequence);
+    }
+
     /**
      * 从仍在订单簿中的限价订单生成快照对象。
      *
@@ -44,7 +53,7 @@ public record RestingOrderSnapshot(long orderId, long userId, String symbol, Ord
             throw new IllegalArgumentException("仅可快照仍有剩余数量的限价挂单");
         }
         return new RestingOrderSnapshot(order.getOrderId(), order.getUserId(), order.getSymbol(),
-                order.getSide(), order.getPrice(), order.getQuantity(), order.getRemainingQuantity(),
+                order.getBaseAsset(), order.getQuoteAsset(), order.getSide(), order.getPrice(), order.getQuantity(), order.getRemainingQuantity(),
                 order.getTimeInForce(), order.getCreatedAt(), order.getSequence());
     }
 
@@ -55,6 +64,7 @@ public record RestingOrderSnapshot(long orderId, long userId, String symbol, Ord
      */
     public MatchOrder toMatchOrder() {
         MatchOrder order = MatchOrder.builder().orderId(orderId).userId(userId).symbol(symbol)
+                .baseAsset(baseAsset).quoteAsset(quoteAsset)
                 .side(side).type(OrderType.LIMIT).price(price).quantity(quantity)
                 .timeInForce(timeInForce).createdAt(createdAt).sequence(sequence).build();
         BigDecimal filledQuantity = quantity.subtract(remainingQuantity);

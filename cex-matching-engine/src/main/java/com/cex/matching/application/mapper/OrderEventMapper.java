@@ -25,6 +25,8 @@ public final class OrderEventMapper {
                 .orderId(parseOrderId(event.getOrderId()))
                 .userId(Objects.requireNonNull(event.getUserId(), "用户编号不能为空"))
                 .symbol(event.getSymbol())
+                .baseAsset(event.getBaseAsset())
+                .quoteAsset(event.getQuoteAsset())
                 .side(OrderSide.valueOf(event.getSide().name()))
                 .type(OrderType.valueOf(event.getType().name()))
                 .price(event.getPrice())

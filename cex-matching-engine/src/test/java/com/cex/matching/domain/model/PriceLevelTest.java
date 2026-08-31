@@ -17,10 +17,10 @@ class PriceLevelTest {
         level.addOrder(first);
         level.addOrder(second);
 
-        assertThat(level.peekFirst()).contains(first);
+        assertThat(level.peekFirst()).isSameAs(first);
         assertThat(level.totalRemainingQuantity()).isEqualByComparingTo("3.0");
-        assertThat(level.removeOrder(1L)).contains(first);
-        assertThat(level.peekFirst()).contains(second);
+        assertThat(level.removeOrder(1L)).isTrue();
+        assertThat(level.peekFirst()).isSameAs(second);
     }
 
     private MatchOrder order(long orderId, String quantity) {

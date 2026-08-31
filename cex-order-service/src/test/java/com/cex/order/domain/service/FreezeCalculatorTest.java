@@ -118,4 +118,14 @@ class FreezeCalculatorTest {
         BigDecimal remaining = calculator.remainingToUnfreeze(order, config);
         assertThat(remaining).isEqualByComparingTo("3000");
     }
+
+    @Test
+    void remainingToUnfreeze_limitBuyFilledAtBetterPriceReleasesDifference() {
+        Order order = Order.builder().orderId(1L).userId(100L).symbol("BTC_USDT")
+                .side(OrderSide.BUY).type(OrderType.LIMIT).price(new BigDecimal("100000"))
+                .quantity(new BigDecimal("0.1")).filledQuantity(new BigDecimal("0.1"))
+                .filledAmount(new BigDecimal("9900")).status(OrderStatus.FILLED).build();
+
+        assertThat(calculator.remainingToUnfreeze(order, config)).isEqualByComparingTo("100");
+    }
 }

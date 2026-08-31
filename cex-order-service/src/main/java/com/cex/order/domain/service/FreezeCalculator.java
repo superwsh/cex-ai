@@ -38,18 +38,15 @@ public class FreezeCalculator {
      * 取消订单时剩余解冻金额:未成交部分的冻结金额
      */
     public BigDecimal remainingToUnfreeze(Order order, SymbolConfig config) {
-        // 市价买单按金额维度解冻:冻结额 - 已成交金额(负值钳 0,防御)
-        if (order.getType() == OrderType.MARKET && order.getSide() == OrderSide.BUY) {
-            BigDecimal filledAmount = order.getFilledAmount() == null
-                    ? BigDecimal.ZERO : order.getFilledAmount();
-            BigDecimal remaining = order.getQuoteAmount().subtract(filledAmount);
-            return remaining.compareTo(BigDecimal.ZERO) < 0 ? BigDecimal.ZERO : remaining;
-        }
-        BigDecimal unfilled = order.getQuantity().subtract(
-                order.getFilledQuantity() == null ? BigDecimal.ZERO : order.getFilledQuantity());
-        if (order.getSide() == OrderSide.SELL) {
-            return unfilled;
-        }
-        return order.getPrice().multiply(unfilled);
+        BigDecimal initialFrozen = calculate(order.getSide(), order.getType(), order.getPrice(),
+                order.getQuantity(), order.getQuoteAmount());
+        BigDecimal consumed = order.getSide() == OrderSide.BUY
+                ? safe(order.getFilledAmount()) : safe(order.getFilledQuantity());
+        BigDecimal remaining = initialFrozen.subtract(consumed);
+        return remaining.signum() < 0 ? BigDecimal.ZERO : remaining;
+    }
+
+    private BigDecimal safe(BigDecimal value) {
+        return value == null ? BigDecimal.ZERO : value;
     }
 }

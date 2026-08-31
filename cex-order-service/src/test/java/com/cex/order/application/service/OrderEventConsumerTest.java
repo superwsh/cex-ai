@@ -1,12 +1,13 @@
 package com.cex.order.application.service;
 
-import com.cex.common.kafka.event.TradeEvent;
 import com.cex.common.kafka.event.OrderResultEvent;
+import com.cex.common.kafka.event.TradeSettledEvent;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.model.OrderSide;
 import com.cex.order.domain.model.OrderStatus;
 import com.cex.order.domain.model.OrderType;
 import com.cex.order.domain.repository.OrderRepository;
+import com.cex.order.domain.service.SymbolConfig;
 import com.cex.order.infrastructure.persistence.entity.ProcessedEventPO;
 import com.cex.order.infrastructure.repository.ProcessedEventRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -29,12 +30,15 @@ class OrderEventConsumerTest {
 
     @Mock private OrderRepository orderRepository;
     @Mock private ProcessedEventRepository processedEventRepository;
+    @Mock private SymbolConfigService symbolConfigService;
+    @Mock private OrderUnfreezeEventPublisher orderUnfreezeEventPublisher;
 
     private OrderEventConsumer consumer;
 
     @BeforeEach
     void setUp() {
-        consumer = new OrderEventConsumer(orderRepository, processedEventRepository);
+        consumer = new OrderEventConsumer(orderRepository, processedEventRepository,
+                symbolConfigService, orderUnfreezeEventPublisher);
     }
 
     private Order openBuyOrder(long orderId) {
@@ -47,22 +51,22 @@ class OrderEventConsumerTest {
                 .build();
     }
 
-    private TradeEvent tradeEvent(String tradeId, long buyOrderId, long sellOrderId) {
-        return TradeEvent.builder()
+    private TradeSettledEvent tradeEvent(String tradeId, long buyOrderId, long sellOrderId) {
+        return TradeSettledEvent.builder()
                 .tradeId(tradeId).symbol("BTC_USDT")
                 .buyOrderId(String.valueOf(buyOrderId)).sellOrderId(String.valueOf(sellOrderId))
                 .price(new BigDecimal("100000")).quantity(new BigDecimal("0.04"))
-                .amount(new BigDecimal("4000")).timestamp(System.currentTimeMillis())
+                .amount(new BigDecimal("4000")).settledAt(System.currentTimeMillis())
                 .build();
     }
 
     @Test
-    void onTradeEvent_updatesBothOrdersAndRecordsProcessed() {
+    void onTradeSettledEvent_updatesBothOrdersAndRecordsProcessed() {
         when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(false);
         when(orderRepository.findByOrderId(1L)).thenReturn(openBuyOrder(1L));
         when(orderRepository.findByOrderId(2L)).thenReturn(openBuyOrder(2L));
 
-        consumer.onTradeEvent(tradeEvent("t1", 1L, 2L));
+        consumer.onTradeSettledEvent(tradeEvent("t1", 1L, 2L));
 
         // 买单一号部分成交
         verify(orderRepository, times(2)).update(any());
@@ -70,47 +74,47 @@ class OrderEventConsumerTest {
     }
 
     @Test
-    void onTradeEvent_duplicateEvent_ignored() {
+    void onTradeSettledEvent_duplicateEvent_ignored() {
         when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(true);
 
-        consumer.onTradeEvent(tradeEvent("t1", 1L, 2L));
+        consumer.onTradeSettledEvent(tradeEvent("t1", 1L, 2L));
 
         verify(orderRepository, never()).update(any());
         verify(processedEventRepository, never()).save(any());
     }
 
     @Test
-    void onTradeEvent_usesEventIdAsTheIdempotencyKey() {
-        TradeEvent event = tradeEvent("t1", 1L, 2L);
+    void onTradeSettledEvent_usesEventIdAsTheIdempotencyKey() {
+        TradeSettledEvent event = tradeEvent("t1", 1L, 2L);
         event.setEventId("trade-event-1");
         when(processedEventRepository.exists("trade-event-1", OrderEventConsumer.CONSUMER)).thenReturn(true);
 
-        consumer.onTradeEvent(event);
+        consumer.onTradeSettledEvent(event);
 
         verify(processedEventRepository).exists("trade-event-1", OrderEventConsumer.CONSUMER);
         verify(orderRepository, never()).update(any());
     }
 
     @Test
-    void onTradeEvent_orderFillsUpdatesStatus() {
+    void onTradeSettledEvent_orderFillsUpdatesStatus() {
         when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(false);
         when(orderRepository.findByOrderId(1L)).thenReturn(openBuyOrder(1L));
         when(orderRepository.findByOrderId(2L)).thenReturn(null); // 卖单不在本库(不存在则跳过)
 
-        consumer.onTradeEvent(tradeEvent("t1", 1L, 2L));
+        consumer.onTradeSettledEvent(tradeEvent("t1", 1L, 2L));
 
         assertThat(consumer).isNotNull();
     }
 
     @Test
-    void onTradeEvent_canceledOrderFill_skipsUpdateButRecordsProcessed() {
+    void onTradeSettledEvent_canceledOrderFill_skipsUpdateButRecordsProcessed() {
         Order canceled = openBuyOrder(1L);
         canceled.cancel();
         when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(false);
         when(orderRepository.findByOrderId(1L)).thenReturn(canceled);
         when(orderRepository.findByOrderId(2L)).thenReturn(null);
 
-        consumer.onTradeEvent(tradeEvent("t1", 1L, 2L));
+        consumer.onTradeSettledEvent(tradeEvent("t1", 1L, 2L));
 
         // 状态冲突(订单已取消)不抛异常、不更新订单,但幂等记录照常写入(视为已消费,避免重试风暴)
         verify(orderRepository, never()).update(any());
@@ -132,5 +136,51 @@ class OrderEventConsumerTest {
         assertThat(order.getStatus()).isEqualTo(OrderStatus.REJECTED);
         verify(orderRepository).update(order);
         verify(processedEventRepository).save(any(ProcessedEventPO.class));
+    }
+
+    @Test
+    void onTradeSettledEvent_filledBuyOrderPublishesPriceImprovementUnfreeze() {
+        Order order = openBuyOrder(1L);
+        SymbolConfig config = symbolConfig();
+        TradeSettledEvent event = tradeEvent("filled-price-improvement", 1L, 2L);
+        event.setQuantity(new BigDecimal("0.1"));
+        event.setPrice(new BigDecimal("99000"));
+        event.setAmount(new BigDecimal("9900"));
+        when(processedEventRepository.exists("filled-price-improvement", OrderEventConsumer.CONSUMER)).thenReturn(false);
+        when(orderRepository.findByOrderId(1L)).thenReturn(order);
+        when(orderRepository.findByOrderId(2L)).thenReturn(null);
+        when(symbolConfigService.getRequired("BTC_USDT")).thenReturn(config);
+
+        consumer.onTradeSettledEvent(event);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.FILLED);
+        verify(orderUnfreezeEventPublisher).publishIfNeeded(order, config);
+    }
+
+    @Test
+    void onOrderResultEvent_cancelConfirmationPublishesUnfreezeAfterSettledFills() {
+        Order order = openBuyOrder(1L);
+        order.markPartiallyFilled(new BigDecimal("0.04"), new BigDecimal("3960"));
+        order.requestCancel();
+        SymbolConfig config = symbolConfig();
+        OrderResultEvent event = OrderResultEvent.builder().eventId("cancel-confirmed-1").orderId("1")
+                .symbol("BTC_USDT").sequence(2L).type(OrderResultEvent.OrderResultType.ORDER_CANCELED)
+                .filledQuantity(new BigDecimal("0.04")).remainingQuantity(new BigDecimal("0.06"))
+                .timestamp(System.currentTimeMillis()).build();
+        when(processedEventRepository.exists("cancel-confirmed-1", OrderEventConsumer.ORDER_RESULT_CONSUMER))
+                .thenReturn(false);
+        when(orderRepository.findByOrderId(1L)).thenReturn(order);
+        when(symbolConfigService.getRequired("BTC_USDT")).thenReturn(config);
+
+        consumer.onOrderResultEvent(event);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCELED);
+        verify(orderUnfreezeEventPublisher).publishIfNeeded(order, config);
+    }
+
+    private SymbolConfig symbolConfig() {
+        return SymbolConfig.builder().symbol("BTC_USDT").baseCurrency("BTC").quoteCurrency("USDT")
+                .priceScale(2).quantityScale(6).minQuantity(new BigDecimal("0.0001"))
+                .minAmount(new BigDecimal("10")).status(SymbolConfig.SymbolStatus.ACTIVE).build();
     }
 }

@@ -4,6 +4,8 @@ import com.cex.common.kafka.event.TradeEvent;
 import com.cex.matching.domain.enums.OrderSide;
 import com.cex.matching.domain.model.Trade;
 
+import java.math.BigDecimal;
+
 /** 将撮合领域成交记录转换为下游服务使用的公共消息。 */
 public final class TradeEventMapper {
 
@@ -22,9 +24,17 @@ public final class TradeEventMapper {
                 .symbol(trade.getSymbol())
                 .buyOrderId(String.valueOf(makerIsBuyer ? trade.getMakerOrderId() : trade.getTakerOrderId()))
                 .sellOrderId(String.valueOf(makerIsBuyer ? trade.getTakerOrderId() : trade.getMakerOrderId()))
+                .buyerUserId(makerIsBuyer ? trade.getMakerUserId() : trade.getTakerUserId())
+                .sellerUserId(makerIsBuyer ? trade.getTakerUserId() : trade.getMakerUserId())
+                .baseAsset(trade.getBaseAsset())
+                .quoteAsset(trade.getQuoteAsset())
                 .price(trade.getPrice())
                 .quantity(trade.getQuantity())
                 .amount(trade.getQuoteAmount())
+                .buyerFee(BigDecimal.ZERO)
+                .buyerFeeAsset(trade.getBaseAsset())
+                .sellerFee(BigDecimal.ZERO)
+                .sellerFeeAsset(trade.getQuoteAsset())
                 .timestamp(trade.getTimestamp().toEpochMilli())
                 .build();
     }

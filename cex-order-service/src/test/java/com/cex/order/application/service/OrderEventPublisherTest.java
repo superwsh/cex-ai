@@ -6,6 +6,7 @@ import com.cex.order.domain.model.OrderSide;
 import com.cex.order.domain.model.OrderStatus;
 import com.cex.order.domain.model.OrderType;
 import com.cex.order.domain.model.TimeInForce;
+import com.cex.order.domain.service.SymbolConfig;
 import com.cex.order.infrastructure.id.SnowflakeGenerator;
 import com.cex.order.infrastructure.persistence.entity.OrderEventOutboxPO;
 import com.cex.order.infrastructure.repository.MatchingCommandSequenceRepository;
@@ -46,13 +47,15 @@ class OrderEventPublisherTest {
         when(matchingCommandSequenceRepository.allocateNext("BTC_USDT")).thenReturn(42L);
         when(snowflakeGenerator.nextId()).thenReturn(99L);
 
-        publisher.publishOrderCreated(order);
+        publisher.publishOrderCreated(order, symbolConfig());
 
         ArgumentCaptor<OrderEventOutboxPO> captor = ArgumentCaptor.forClass(OrderEventOutboxPO.class);
         verify(outboxRepository).insert(captor.capture());
         OrderEvent event = objectMapper.readValue(captor.getValue().getPayload(), OrderEvent.class);
         assertThat(event.getSequence()).isEqualTo(42L);
         verify(matchingCommandSequenceRepository).allocateNext("BTC_USDT");
+        assertThat(event.getBaseAsset()).isEqualTo("BTC");
+        assertThat(event.getQuoteAsset()).isEqualTo("USDT");
     }
 
     /** 创建用于验证 Outbox 事件载荷的有效限价订单。 */
@@ -63,5 +66,11 @@ class OrderEventPublisherTest {
                 .quantity(BigDecimal.ONE).filledQuantity(BigDecimal.ZERO).filledAmount(BigDecimal.ZERO)
                 .status(OrderStatus.PENDING_MATCH).timeInForce(TimeInForce.GTC)
                 .build();
+    }
+
+    private SymbolConfig symbolConfig() {
+        return SymbolConfig.builder().symbol("BTC_USDT").baseCurrency("BTC").quoteCurrency("USDT")
+                .priceScale(2).quantityScale(6).minQuantity(new BigDecimal("0.0001"))
+                .minAmount(BigDecimal.TEN).status(SymbolConfig.SymbolStatus.ACTIVE).build();
     }
 }

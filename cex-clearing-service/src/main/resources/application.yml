@@ -34,6 +34,8 @@ spring:
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "com.cex.*"
+    listener:
+      ack-mode: record
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -63,3 +65,8 @@ management:
     web:
       exposure:
         include: health,info,prometheus
+
+clearing:
+  admin:
+    # 未配置时后台接口默认拒绝访问，生产环境必须通过密钥管理系统注入。
+    token: ${CLEARING_ADMIN_TOKEN:}

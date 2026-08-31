@@ -92,6 +92,7 @@ public class OrderRepositoryImpl implements OrderRepository {
                 .price(order.getPrice()).quantity(order.getQuantity())
                 .quoteAmount(order.getQuoteAmount())
                 .filledQuantity(order.getFilledQuantity()).filledAmount(order.getFilledAmount())
+                .cancelConfirmedFilledQuantity(order.getCancelConfirmedFilledQuantity())
                 .status(order.getStatus().name()).timeInForce(order.getTimeInForce() == null ? null : order.getTimeInForce().name())
                 .version(order.getVersion()).createdAt(order.getCreatedAt()).updatedAt(order.getUpdatedAt())
                 .build();
@@ -104,6 +105,7 @@ public class OrderRepositoryImpl implements OrderRepository {
                 .side(OrderSide.valueOf(po.getSide())).type(OrderType.valueOf(po.getType()))
                 .price(po.getPrice()).quantity(po.getQuantity()).quoteAmount(po.getQuoteAmount())
                 .filledQuantity(po.getFilledQuantity()).filledAmount(po.getFilledAmount())
+                .cancelConfirmedFilledQuantity(po.getCancelConfirmedFilledQuantity())
                 .status(OrderStatus.valueOf(po.getStatus()))
                 .timeInForce(po.getTimeInForce() == null ? null : TimeInForce.valueOf(po.getTimeInForce()))
                 .version(po.getVersion()).createdAt(po.getCreatedAt()).updatedAt(po.getUpdatedAt())

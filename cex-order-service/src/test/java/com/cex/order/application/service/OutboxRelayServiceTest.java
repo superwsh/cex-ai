@@ -1,7 +1,9 @@
 package com.cex.order.application.service;
 
 import com.cex.common.kafka.event.OrderEvent;
+import com.cex.common.kafka.event.OrderUnfreezeEvent;
 import com.cex.order.infrastructure.kafka.OrderKafkaProducer;
+import com.cex.order.infrastructure.kafka.OrderUnfreezeKafkaProducer;
 import com.cex.order.infrastructure.persistence.entity.OrderEventOutboxPO;
 import com.cex.order.infrastructure.repository.OutboxRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,12 +29,13 @@ class OutboxRelayServiceTest {
 
     @Mock private OutboxRepository outboxRepository;
     @Mock private OrderKafkaProducer kafkaProducer;
+    @Mock private OrderUnfreezeKafkaProducer orderUnfreezeKafkaProducer;
 
     private OutboxRelayService service;
 
     @BeforeEach
     void setUp() {
-        service = new OutboxRelayService(outboxRepository, kafkaProducer, new ObjectMapper());
+        service = new OutboxRelayService(outboxRepository, kafkaProducer, orderUnfreezeKafkaProducer, new ObjectMapper());
     }
 
     private OrderEventOutboxPO pendingOutbox() {
@@ -85,5 +88,19 @@ class OutboxRelayServiceTest {
         // 两次更新:一次置 SENDING,一次失败置 FAILED;对象原地变更,直接断言最终状态
         verify(outboxRepository, org.mockito.Mockito.times(2)).update(any());
         assertThat(outbox.getStatus()).isEqualTo(OrderEventOutboxPO.STATUS_FAILED);
+    }
+
+    @Test
+    void relay_orderUnfreezeEvent_routesToClearingTopicProducer() throws Exception {
+        OrderEventOutboxPO outbox = pendingOutbox();
+        outbox.setEventType(OrderUnfreezeEventPublisher.EVENT_ORDER_UNFREEZE);
+        outbox.setPayload(new ObjectMapper().writeValueAsString(OrderUnfreezeEvent.builder().eventId("unfreeze-1")
+                .orderId(1L).userId(100L).asset("USDT").amount(new BigDecimal("100")).reason("FILLED")
+                .timestamp(System.currentTimeMillis()).build()));
+        when(outboxRepository.findPending(100, 10)).thenReturn(List.of(outbox));
+
+        service.relay();
+
+        verify(orderUnfreezeKafkaProducer).send(any(OrderUnfreezeEvent.class));
     }
 }

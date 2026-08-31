@@ -7,7 +7,8 @@ import java.time.Instant;
 import java.util.Objects;
 
 /** 用于在快照中保存成交重投所需字段的不可变记录。 */
-public record TradeSnapshot(String tradeId, String symbol, long makerOrderId, long takerOrderId,
+public record TradeSnapshot(String tradeId, String symbol, String baseAsset, String quoteAsset,
+                            long makerOrderId, long takerOrderId, long makerUserId, long takerUserId,
                             OrderSide makerSide, BigDecimal price, BigDecimal quantity,
                             Instant timestamp, long sequence) {
 
@@ -15,7 +16,8 @@ public record TradeSnapshot(String tradeId, String symbol, long makerOrderId, lo
      * 校验成交快照字段。
      */
     public TradeSnapshot {
-        if (tradeId == null || tradeId.isBlank() || makerOrderId <= 0 || takerOrderId <= 0 || sequence < 0) {
+        if (tradeId == null || tradeId.isBlank() || makerOrderId <= 0 || takerOrderId <= 0
+                || makerUserId <= 0 || takerUserId <= 0 || sequence < 0) {
             throw new IllegalArgumentException("成交快照标识和序号必须有效");
         }
         if (symbol == null || symbol.isBlank()) {
@@ -36,8 +38,9 @@ public record TradeSnapshot(String tradeId, String symbol, long makerOrderId, lo
      */
     public static TradeSnapshot from(Trade trade) {
         Objects.requireNonNull(trade, "成交记录不能为空");
-        return new TradeSnapshot(trade.getTradeId(), trade.getSymbol(), trade.getMakerOrderId(),
-                trade.getTakerOrderId(), trade.getMakerSide(), trade.getPrice(), trade.getQuantity(),
+        return new TradeSnapshot(trade.getTradeId(), trade.getSymbol(), trade.getBaseAsset(), trade.getQuoteAsset(),
+                trade.getMakerOrderId(), trade.getTakerOrderId(), trade.getMakerUserId(), trade.getTakerUserId(),
+                trade.getMakerSide(), trade.getPrice(), trade.getQuantity(),
                 trade.getTimestamp(), trade.getSequence());
     }
 
@@ -47,8 +50,9 @@ public record TradeSnapshot(String tradeId, String symbol, long makerOrderId, lo
      * @return 等价的领域成交记录
      */
     public Trade toTrade() {
-        return Trade.builder().tradeId(tradeId).symbol(symbol).makerOrderId(makerOrderId)
-                .takerOrderId(takerOrderId).makerSide(makerSide).price(price).quantity(quantity)
+        return Trade.builder().tradeId(tradeId).symbol(symbol).baseAsset(baseAsset).quoteAsset(quoteAsset)
+                .makerOrderId(makerOrderId).takerOrderId(takerOrderId).makerUserId(makerUserId).takerUserId(takerUserId)
+                .makerSide(makerSide).price(price).quantity(quantity)
                 .timestamp(timestamp).sequence(sequence).build();
     }
 }

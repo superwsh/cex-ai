@@ -30,6 +30,7 @@ public class Order {
     private BigDecimal quoteAmount;  // 市价买单冻结金额
     private BigDecimal filledQuantity;
     private BigDecimal filledAmount;
+    private BigDecimal cancelConfirmedFilledQuantity;
     private OrderStatus status;
     private TimeInForce timeInForce;
     private LocalDateTime createdAt;
@@ -60,6 +61,11 @@ public class Order {
         }
         this.filledQuantity = newFilledQty;
         this.filledAmount = newFilledAmount;
+        if (shouldConfirmCanceled(newFilledQty)) {
+            this.status = OrderStatus.CANCELED;
+            this.updatedAt = LocalDateTime.now();
+            return;
+        }
         this.status = marketBuy
                 ? (quoteAmount != null && newFilledAmount.compareTo(quoteAmount) >= 0
                         ? OrderStatus.FILLED : OrderStatus.PARTIALLY_FILLED)
@@ -69,11 +75,39 @@ public class Order {
     }
 
     public void cancel() {
+        confirmCanceled(safeFilledQuantity());
+    }
+
+    /** 记录用户撤单申请，资金仍保持冻结直到撮合引擎确认。 */
+    public void requestCancel() {
         if (!status.canCancel()) {
             throw new OrderStatusInvalidException("订单状态 " + status + " 不允许取消");
         }
-        this.status = OrderStatus.CANCELED;
+        this.status = OrderStatus.CANCEL_REQUESTED;
         this.updatedAt = LocalDateTime.now();
+    }
+
+    /** 记录撮合撤单确认，并在本地已接收全部成交回报后进入 CANCELED。 */
+    public boolean confirmCanceled(BigDecimal confirmedFilledQuantity) {
+        if (confirmedFilledQuantity == null || confirmedFilledQuantity.signum() < 0) {
+            throw new OrderStatusInvalidException("撤单确认累计成交数量非法");
+        }
+        if (status == OrderStatus.CANCELED) {
+            return false;
+        }
+        if (status == OrderStatus.FILLED || status == OrderStatus.REJECTED) {
+            throw new OrderStatusInvalidException("终态订单不可确认撤单: " + status);
+        }
+        this.cancelConfirmedFilledQuantity = confirmedFilledQuantity;
+        if (safeFilledQuantity().compareTo(confirmedFilledQuantity) > 0) {
+            throw new OrderStatusInvalidException("本地累计成交数量超过撮合撤单确认数量");
+        }
+        if (safeFilledQuantity().compareTo(confirmedFilledQuantity) == 0) {
+            this.status = OrderStatus.CANCELED;
+            this.updatedAt = LocalDateTime.now();
+            return true;
+        }
+        return false;
     }
 
     public void reject() {
@@ -98,6 +132,11 @@ public class Order {
 
     private BigDecimal safeFilledAmount() {
         return filledAmount == null ? BigDecimal.ZERO : filledAmount;
+    }
+
+    private boolean shouldConfirmCanceled(BigDecimal filledQuantity) {
+        return status == OrderStatus.CANCEL_REQUESTED && cancelConfirmedFilledQuantity != null
+                && filledQuantity.compareTo(cancelConfirmedFilledQuantity) == 0;
     }
 
     public boolean isOpen() {

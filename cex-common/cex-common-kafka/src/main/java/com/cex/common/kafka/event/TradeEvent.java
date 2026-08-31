@@ -37,6 +37,18 @@ public class TradeEvent implements Serializable {
     /** 卖单订单ID */
     private String sellOrderId;
 
+    /** 买方用户ID。 */
+    private Long buyerUserId;
+
+    /** 卖方用户ID。 */
+    private Long sellerUserId;
+
+    /** 基础资产，例如 BTC。 */
+    private String baseAsset;
+
+    /** 计价资产，例如 USDT。 */
+    private String quoteAsset;
+
     /** 成交价格 */
     private BigDecimal price;
 
@@ -45,6 +57,18 @@ public class TradeEvent implements Serializable {
 
     /** 成交金额 = price * quantity */
     private BigDecimal amount;
+
+    /** 撮合时已确定的买方手续费；没有手续费时为零。 */
+    private BigDecimal buyerFee;
+
+    /** 买方手续费资产。 */
+    private String buyerFeeAsset;
+
+    /** 撮合时已确定的卖方手续费；没有手续费时为零。 */
+    private BigDecimal sellerFee;
+
+    /** 卖方手续费资产。 */
+    private String sellerFeeAsset;
 
     /** 成交时间（毫秒时间戳） */
     private Long timestamp;

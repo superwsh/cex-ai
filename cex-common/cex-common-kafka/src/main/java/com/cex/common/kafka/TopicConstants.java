@@ -14,8 +14,20 @@ public final class TopicConstants {
     /** 撮合成交事件，Matching Engine -> Clearing / Market / Notification */
     public static final String TOPIC_TRADE_EVENT = "cex.trade.event";
 
+    /** 成交事件重试主题。 */
+    public static final String TOPIC_TRADE_EVENT_RETRY = "cex.trade.event.retry";
+
+    /** 无法自动恢复的成交事件死信主题。 */
+    public static final String TOPIC_TRADE_EVENT_DLQ = "cex.trade.event.dlq";
+
+    /** 清算结算成功事件，Clearing Service -> Order / Market / Notification。 */
+    public static final String TOPIC_TRADE_SETTLED_EVENT = "cex.trade.settled";
+
     /** 撮合订单状态结果，Matching Engine -> Order Service。 */
     public static final String TOPIC_ORDER_RESULT_EVENT = "cex.matching.order-result";
+
+    /** 订单终态后的剩余冻结释放指令，Order Service -> Clearing Service。 */
+    public static final String TOPIC_ORDER_UNFREEZE_EVENT = "cex.order.unfreeze";
 
     /** 资产变更事件，Clearing/Asset Service 对外广播 */
     public static final String TOPIC_ASSET_CHANGE = "cex.asset.change";

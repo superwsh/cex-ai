@@ -52,6 +52,12 @@ public class OrderEvent implements Serializable {
     /** 交易对，如 BTC/USDT */
     private String symbol;
 
+    /** 基础资产，由订单服务的交易对配置确定。 */
+    private String baseAsset;
+
+    /** 计价资产，由订单服务的交易对配置确定。 */
+    private String quoteAsset;
+
     /** 用户ID */
     private Long userId;
 

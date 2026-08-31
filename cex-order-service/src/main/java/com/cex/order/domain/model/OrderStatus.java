@@ -4,6 +4,7 @@ public enum OrderStatus {
     NEW,                // 新建(预留)
     PENDING_MATCH,      // 已提交待撮合
     PARTIALLY_FILLED,   // 部分成交
+    CANCEL_REQUESTED,   // 已申请撤单，等待撮合确认
     FILLED,             // 全部成交
     CANCELED,           // 已取消
     REJECTED;           // 已拒绝
@@ -15,7 +16,7 @@ public enum OrderStatus {
 
     /** 可成交(回报)状态 */
     public boolean canFill() {
-        return this == PENDING_MATCH || this == PARTIALLY_FILLED;
+        return this == PENDING_MATCH || this == PARTIALLY_FILLED || this == CANCEL_REQUESTED;
     }
 
     public boolean isTerminal() {

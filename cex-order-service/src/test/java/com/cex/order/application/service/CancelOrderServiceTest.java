@@ -11,12 +11,9 @@ import com.cex.order.domain.model.TimeInForce;
 import com.cex.order.domain.repository.OrderRepository;
 import com.cex.order.domain.service.FreezeCalculator;
 import com.cex.order.domain.service.SymbolConfig;
-import com.cex.order.infrastructure.asset.AccountServiceClient;
-import com.cex.order.infrastructure.asset.UnfreezeRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -34,7 +31,6 @@ class CancelOrderServiceTest {
 
     @Mock private OrderRepository orderRepository;
     @Mock private SymbolConfigService symbolConfigService;
-    @Mock private AccountServiceClient accountServiceClient;
     @Mock private OrderPersistenceService persistenceService;
 
     private CancelOrderService service;
@@ -48,8 +44,7 @@ class CancelOrderServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new CancelOrderService(orderRepository, symbolConfigService,
-                accountServiceClient, persistenceService, new FreezeCalculator());
+        service = new CancelOrderService(orderRepository, symbolConfigService, persistenceService);
     }
 
     private Order openBuyOrder() {
@@ -67,20 +62,15 @@ class CancelOrderServiceTest {
     }
 
     @Test
-    void cancel_success_persistsCanceledAndUnfreezes() {
+    void cancel_success_marksRequestedAndWaitsForMatchingConfirmation() {
         Order order = openBuyOrder();
         when(orderRepository.findByOrderId(1L)).thenReturn(order);
         when(symbolConfigService.getRequired("BTC_USDT")).thenReturn(config);
 
         service.cancelOrder(cancelCommand());
 
-        verify(persistenceService).cancelInTx(any());
-        ArgumentCaptor<UnfreezeRequest> captor = ArgumentCaptor.forClass(UnfreezeRequest.class);
-        verify(accountServiceClient).unfreeze(captor.capture());
-        assertThat(captor.getValue().getCurrency()).isEqualTo("USDT");
-        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("10000");
-        assertThat(captor.getValue().getBizType()).isEqualTo("FREEZE_ORDER");
-        assertThat(captor.getValue().getBizId()).isEqualTo(1L);
+        verify(persistenceService).cancelInTx(any(), any());
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.CANCEL_REQUESTED);
     }
 
     @Test
@@ -91,8 +81,7 @@ class CancelOrderServiceTest {
         assertThatThrownBy(() -> service.cancelOrder(cmd))
                 .isInstanceOf(BizException.class)
                 .hasMessageContaining("订单不存在");
-        verify(persistenceService, never()).cancelInTx(any());
-        verify(accountServiceClient, never()).unfreeze(any());
+        verify(persistenceService, never()).cancelInTx(any(), any());
     }
 
     @Test
@@ -114,12 +103,11 @@ class CancelOrderServiceTest {
         assertThatThrownBy(() -> service.cancelOrder(cancelCommand()))
                 .isInstanceOf(OrderStatusInvalidException.class)
                 .hasMessageContaining("FILLED");
-        verify(persistenceService, never()).cancelInTx(any());
-        verify(accountServiceClient, never()).unfreeze(any());
+        verify(persistenceService, never()).cancelInTx(any(), any());
     }
 
     @Test
-    void cancel_partiallyFilled_unfreezesRemaining() {
+    void cancel_partiallyFilled_waitsForMatchingConfirmation() {
         Order partial = openBuyOrder();
         partial.markPartiallyFilled(new BigDecimal("0.04"), new BigDecimal("4000"));
         when(orderRepository.findByOrderId(1L)).thenReturn(partial);
@@ -127,8 +115,6 @@ class CancelOrderServiceTest {
 
         service.cancelOrder(cancelCommand());
 
-        ArgumentCaptor<UnfreezeRequest> captor = ArgumentCaptor.forClass(UnfreezeRequest.class);
-        verify(accountServiceClient).unfreeze(captor.capture());
-        assertThat(captor.getValue().getAmount()).isEqualByComparingTo("6000"); // 100000*(0.1-0.04)
+        assertThat(partial.getStatus()).isEqualTo(OrderStatus.CANCEL_REQUESTED);
     }
 }

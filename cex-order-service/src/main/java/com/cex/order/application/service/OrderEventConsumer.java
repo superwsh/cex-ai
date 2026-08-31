@@ -1,8 +1,8 @@
 package com.cex.order.application.service;
 
 import com.cex.common.kafka.TopicConstants;
-import com.cex.common.kafka.event.TradeEvent;
 import com.cex.common.kafka.event.OrderResultEvent;
+import com.cex.common.kafka.event.TradeSettledEvent;
 import com.cex.order.common.OrderStatusInvalidException;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.repository.OrderRepository;
@@ -18,7 +18,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 /**
- * 成交回报消费者:撮合引擎发布 TradeEvent 到 cex.trade.event,本服务更新订单成交状态
+ * 成交回报消费者:仅在清算服务发布 TradeSettledEvent 后更新订单成交状态。
  * 幂等:eventId + consumer 唯一约束,重复消息直接忽略；兼容旧消息时回退使用 tradeId
  * 事务边界:check + 更新 + 记录 processed_event 在同一事务,消费失败回滚无副作用
  */
@@ -32,17 +32,19 @@ public class OrderEventConsumer {
 
     private final OrderRepository orderRepository;
     private final ProcessedEventRepository processedEventRepository;
+    private final SymbolConfigService symbolConfigService;
+    private final OrderUnfreezeEventPublisher orderUnfreezeEventPublisher;
 
-    @KafkaListener(topics = TopicConstants.TOPIC_TRADE_EVENT, groupId = "cex-order")
+    @KafkaListener(topics = TopicConstants.TOPIC_TRADE_SETTLED_EVENT, groupId = "cex-order")
     @Transactional
-    public void onTradeEvent(TradeEvent event) {
+    public void onTradeSettledEvent(TradeSettledEvent event) {
         String eventId = resolveEventId(event);
         if (eventId == null) {
             return;
         }
         // 幂等:已处理过则忽略(事务内检查,防并发重复)
         if (processedEventRepository.exists(eventId, CONSUMER)) {
-            log.info("成交事件已处理,忽略: eventId={}, tradeId={}", eventId, event.getTradeId());
+            log.info("已结算成交事件已处理,忽略: eventId={}, tradeId={}", eventId, event.getTradeId());
             return;
         }
         updateOrder(event.getBuyOrderId(), event.getQuantity(), event.getAmount());
@@ -53,7 +55,7 @@ public class OrderEventConsumer {
                 .consumer(CONSUMER)
                 .processedAt(LocalDateTime.now())
                 .build());
-        log.info("成交回报处理完成: tradeId={}, symbol={}, quantity={}, price={}",
+        log.info("已结算成交回报处理完成: tradeId={}, symbol={}, quantity={}, price={}",
                 event.getTradeId(), event.getSymbol(), event.getQuantity(), event.getPrice());
     }
 
@@ -86,16 +88,21 @@ public class OrderEventConsumer {
 
     /** 根据撮合端权威结果更新本地订单状态和累计成交数量。 */
     private void applyOrderResult(Order order, OrderResultEvent event) {
-        if (event.getFilledQuantity() != null) {
-            order.setFilledQuantity(event.getFilledQuantity());
+        switch (event.getType()) {
+            case ORDER_REJECTED -> order.reject();
+            case ORDER_CANCELED -> order.confirmCanceled(event.getFilledQuantity());
+            case ORDER_PARTIALLY_FILLED, ORDER_FILLED -> {
+                return;
+            }
         }
-        order.setStatus(switch (event.getType()) {
-            case ORDER_REJECTED -> com.cex.order.domain.model.OrderStatus.REJECTED;
-            case ORDER_PARTIALLY_FILLED -> com.cex.order.domain.model.OrderStatus.PARTIALLY_FILLED;
-            case ORDER_FILLED -> com.cex.order.domain.model.OrderStatus.FILLED;
-            case ORDER_CANCELED -> com.cex.order.domain.model.OrderStatus.CANCELED;
-        });
-        order.setUpdatedAt(LocalDateTime.now());
+        publishUnfreezeIfTerminal(order);
+    }
+
+    /** 为已确认终态订单写入剩余冻结解冻 Outbox。 */
+    private void publishUnfreezeIfTerminal(Order order) {
+        if (order.getStatus().isTerminal()) {
+            orderUnfreezeEventPublisher.publishIfNeeded(order, symbolConfigService.getRequired(order.getSymbol()));
+        }
     }
 
     /**
@@ -104,7 +111,7 @@ public class OrderEventConsumer {
      * @param event Kafka 收到的成交事件
      * @return 可用于幂等记录的事件编号；事件无效时返回 null
      */
-    private String resolveEventId(TradeEvent event) {
+    private String resolveEventId(TradeSettledEvent event) {
         if (event == null) {
             return null;
         }
@@ -134,6 +141,7 @@ public class OrderEventConsumer {
             }
             order.markPartiallyFilled(quantity, amount); // 状态机:内部判断 PARTIALLY_FILLED/FILLED
             orderRepository.update(order);
+            publishUnfreezeIfTerminal(order);
         } catch (OrderStatusInvalidException e) {
             // 状态冲突(取消/终态竞态):视为已消费跳过,避免重试风暴,幂等记录照常写入,留日志人工介入
             log.warn("成交回报与订单状态冲突,跳过: orderId={}, reason={}", orderIdStr, e.getMessage());

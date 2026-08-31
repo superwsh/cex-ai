@@ -1,7 +1,9 @@
 package com.cex.order.application.service;
 
 import com.cex.common.kafka.event.OrderEvent;
+import com.cex.common.kafka.event.OrderUnfreezeEvent;
 import com.cex.order.infrastructure.kafka.OrderKafkaProducer;
+import com.cex.order.infrastructure.kafka.OrderUnfreezeKafkaProducer;
 import com.cex.order.infrastructure.persistence.entity.OrderEventOutboxPO;
 import com.cex.order.infrastructure.repository.OutboxRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -27,6 +29,7 @@ public class OutboxRelayService {
 
     private final OutboxRepository outboxRepository;
     private final OrderKafkaProducer kafkaProducer;
+    private final OrderUnfreezeKafkaProducer orderUnfreezeKafkaProducer;
     private final ObjectMapper objectMapper;
 
     public void relay() {
@@ -45,8 +48,7 @@ public class OutboxRelayService {
         outbox.setUpdatedAt(LocalDateTime.now());
         outboxRepository.update(outbox);
         try {
-            OrderEvent event = objectMapper.readValue(outbox.getPayload(), OrderEvent.class);
-            kafkaProducer.send(event);
+            sendEvent(outbox);
             outbox.setStatus(OrderEventOutboxPO.STATUS_SUCCESS);
             outbox.setUpdatedAt(LocalDateTime.now());
             outboxRepository.update(outbox);
@@ -68,5 +70,14 @@ public class OutboxRelayService {
             outbox.setUpdatedAt(LocalDateTime.now());
             outboxRepository.update(outbox);
         }
+    }
+
+    /** 按 Outbox 事件类型路由撮合命令或剩余冻结释放指令。 */
+    private void sendEvent(OrderEventOutboxPO outbox) throws Exception {
+        if (OrderUnfreezeEventPublisher.EVENT_ORDER_UNFREEZE.equals(outbox.getEventType())) {
+            orderUnfreezeKafkaProducer.send(objectMapper.readValue(outbox.getPayload(), OrderUnfreezeEvent.class));
+            return;
+        }
+        kafkaProducer.send(objectMapper.readValue(outbox.getPayload(), OrderEvent.class));
     }
 }

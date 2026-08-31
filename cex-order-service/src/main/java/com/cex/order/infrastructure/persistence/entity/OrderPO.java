@@ -32,6 +32,7 @@ public class OrderPO {
     private BigDecimal quoteAmount;
     private BigDecimal filledQuantity;
     private BigDecimal filledAmount;
+    private BigDecimal cancelConfirmedFilledQuantity;
     private String status;
     private String timeInForce;
     @Version

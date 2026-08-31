@@ -54,6 +54,11 @@ public final class PriceLevel {
         return orders.peekFirst();
     }
 
+    /** 兼容旧撮合 API。 */
+    public MatchOrder peekFirst() {
+        return getFirstOrder();
+    }
+
     public boolean isEmpty() {
         return orders.isEmpty();
     }
@@ -67,6 +72,16 @@ public final class PriceLevel {
         return orders.stream()
                 .map(MatchOrder::getRemainingQuantity)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
+    }
+
+    /** 兼容旧撮合 API。 */
+    public BigDecimal totalRemainingQuantity() {
+        return getTotalRemainingQuantity();
+    }
+
+    /** 判断指定订单是否仍在当前价格档位。 */
+    public boolean contains(MatchOrder order) {
+        return orders.contains(order);
     }
 
     public List<MatchOrder> getOrders() {

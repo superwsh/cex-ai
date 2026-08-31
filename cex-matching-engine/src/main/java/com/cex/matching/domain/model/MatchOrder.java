@@ -13,9 +13,18 @@ import java.util.Objects;
 /** 撮合引擎使用的内存订单模型。 */
 public final class MatchOrder {
 
+    /**
+     * 兼容 WAL 与旧快照使用的方向枚举；撮合领域内部仍使用 OrderSide。
+     */
+    public enum Side {
+        BUY, SELL
+    }
+
     private final long orderId;
     private final long userId;
     private final String symbol;
+    private final String baseAsset;
+    private final String quoteAsset;
     private final OrderSide side;
     private final OrderType type;
     private final BigDecimal price;
@@ -45,13 +54,16 @@ public final class MatchOrder {
      * @param sequence 撮合序号
      */
     @Builder
-    private MatchOrder(long orderId, long userId, String symbol, OrderSide side, OrderType type,
+    private MatchOrder(long orderId, long userId, String symbol, String baseAsset, String quoteAsset,
+                       OrderSide side, OrderType type,
                        BigDecimal price, BigDecimal quantity, BigDecimal quoteAmount,
                        TimeInForce timeInForce, Instant createdAt, long sequence) {
         validate(orderId, userId, symbol, side, type, price, quantity, quoteAmount, timeInForce, createdAt, sequence);
         this.orderId = orderId;
         this.userId = userId;
         this.symbol = symbol;
+        this.baseAsset = baseAsset;
+        this.quoteAsset = quoteAsset;
         this.side = side;
         this.type = type;
         this.price = price;
@@ -63,6 +75,23 @@ public final class MatchOrder {
         this.createdAt = createdAt;
         this.sequence = sequence;
         this.status = OrderStatus.OPEN;
+    }
+
+    /**
+     * 兼容旧命令归一化链路的限价单构造器。
+     * 该链路没有跨服务资产字段，不能用于产生可结算的 Kafka 成交事件。
+     */
+    public MatchOrder(long orderId, long userId, String symbol, Side side, BigDecimal price,
+                      BigDecimal quantity, BigDecimal remainingQuantity, long sequence) {
+        this(orderId, userId, symbol, null, null, OrderSide.valueOf(side.name()), OrderType.LIMIT,
+                price, quantity, null, TimeInForce.GTC, Instant.EPOCH, sequence);
+        if (remainingQuantity == null || remainingQuantity.signum() < 0 || remainingQuantity.compareTo(quantity) > 0) {
+            throw new IllegalArgumentException("剩余数量不合法");
+        }
+        BigDecimal filledQuantity = quantity.subtract(remainingQuantity);
+        if (filledQuantity.signum() > 0) {
+            applyFill(filledQuantity, null);
+        }
     }
 
     /**
@@ -140,6 +169,14 @@ public final class MatchOrder {
         return symbol;
     }
 
+    public String getBaseAsset() {
+        return baseAsset;
+    }
+
+    public String getQuoteAsset() {
+        return quoteAsset;
+    }
+
     public OrderSide getSide() {
         return side;
     }
@@ -152,12 +189,27 @@ public final class MatchOrder {
         return price;
     }
 
+    /** 兼容旧撮合 API。 */
+    public BigDecimal price() {
+        return getPrice();
+    }
+
     public BigDecimal getQuantity() {
         return quantity;
     }
 
+    /** 兼容旧撮合 API。 */
+    public BigDecimal quantity() {
+        return getQuantity();
+    }
+
     public BigDecimal getRemainingQuantity() {
         return remainingQuantity;
+    }
+
+    /** 兼容旧撮合 API。 */
+    public BigDecimal remainingQuantity() {
+        return getRemainingQuantity();
     }
 
     /**
