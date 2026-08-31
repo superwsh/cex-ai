@@ -36,6 +36,12 @@ spring:
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
       acks: all
 
+cex:
+  matching:
+    wal-directory: ${MATCHING_WAL_DIRECTORY:data/matching/wal}
+    snapshot-directory: ${MATCHING_SNAPSHOT_DIRECTORY:data/matching/snapshot}
+    snapshot-interval: ${MATCHING_SNAPSHOT_INTERVAL:1000}
+
 management:
   endpoints:
     web:

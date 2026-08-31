@@ -79,6 +79,18 @@ class OrderEventConsumerTest {
     }
 
     @Test
+    void onTradeEvent_usesEventIdAsTheIdempotencyKey() {
+        TradeEvent event = tradeEvent("t1", 1L, 2L);
+        event.setEventId("trade-event-1");
+        when(processedEventRepository.exists("trade-event-1", OrderEventConsumer.CONSUMER)).thenReturn(true);
+
+        consumer.onTradeEvent(event);
+
+        verify(processedEventRepository).exists("trade-event-1", OrderEventConsumer.CONSUMER);
+        verify(orderRepository, never()).update(any());
+    }
+
+    @Test
     void onTradeEvent_orderFillsUpdatesStatus() {
         when(processedEventRepository.exists("t1", OrderEventConsumer.CONSUMER)).thenReturn(false);
         when(orderRepository.findByOrderId(1L)).thenReturn(openBuyOrder(1L));

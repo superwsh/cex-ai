@@ -12,6 +12,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -29,9 +30,15 @@ public class OrderEventPublisher {
     private final SnowflakeGenerator snowflakeGenerator;
     private final ObjectMapper objectMapper;
 
-    /** 订单创建事件(SUBMIT) */
+    /**
+     * 为新建订单写入提交事件的 Outbox 记录。
+     *
+     * @param order 已在同一事务中创建的订单
+     */
     public void publishOrderCreated(Order order) {
+        String eventId = UUID.randomUUID().toString();
         OrderEvent event = OrderEvent.builder()
+                .eventId(eventId)
                 .orderId(String.valueOf(order.getOrderId()))
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())
@@ -41,14 +48,22 @@ public class OrderEventPublisher {
                 .type(OrderEvent.OrderType.valueOf(order.getType().name()))
                 .price(order.getPrice())
                 .quantity(order.getQuantity())
+                .quoteAmount(order.getQuoteAmount())
+                .timeInForce(toKafkaTimeInForce(order))
                 .timestamp(System.currentTimeMillis())
                 .build();
         insertOutbox(order, EVENT_ORDER_CREATED, event);
     }
 
-    /** 订单取消事件(CANCEL) */
+    /**
+     * 为撤销订单写入取消事件的 Outbox 记录。
+     *
+     * @param order 已在同一事务中完成撤单状态变更的订单
+     */
     public void publishOrderCanceled(Order order) {
+        String eventId = UUID.randomUUID().toString();
         OrderEvent event = OrderEvent.builder()
+                .eventId(eventId)
                 .orderId(String.valueOf(order.getOrderId()))
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())
@@ -59,16 +74,25 @@ public class OrderEventPublisher {
                 .price(order.getPrice())
                 .quantity(order.getQuantity().subtract(
                         order.getFilledQuantity() == null ? java.math.BigDecimal.ZERO : order.getFilledQuantity()))
+                .quoteAmount(order.getQuoteAmount())
+                .timeInForce(toKafkaTimeInForce(order))
                 .timestamp(System.currentTimeMillis())
                 .build();
         insertOutbox(order, EVENT_ORDER_CANCELED, event);
     }
 
+    /**
+     * 将消息载荷和其相同的幂等标识写入 Outbox，避免重放时产生两个不同事件编号。
+     *
+     * @param order 事件所属订单
+     * @param eventType Outbox 事件类型
+     * @param event 将被序列化并投递到 Kafka 的事件
+     */
     private void insertOutbox(Order order, String eventType, OrderEvent event) {
         LocalDateTime now = LocalDateTime.now();
         OrderEventOutboxPO outbox = OrderEventOutboxPO.builder()
                 .id(snowflakeGenerator.nextId())
-                .eventId(UUID.randomUUID().toString())
+                .eventId(Objects.requireNonNull(event.getEventId(), "订单事件编号不能为空"))
                 .aggregateType("ORDER")
                 .aggregateId(String.valueOf(order.getOrderId()))
                 .eventType(eventType)
@@ -84,6 +108,23 @@ public class OrderEventPublisher {
                 eventType, order.getOrderId(), order.getUserId(), order.getSymbol());
     }
 
+    /**
+     * 将订单域的有效期映射为跨服务消息枚举，并拒绝缺失的核心字段。
+     *
+     * @param order 需要发布事件的订单
+     * @return Kafka 订单事件使用的有效期枚举
+     */
+    private OrderEvent.TimeInForce toKafkaTimeInForce(Order order) {
+        return OrderEvent.TimeInForce.valueOf(
+                Objects.requireNonNull(order.getTimeInForce(), "订单有效期不能为空").name());
+    }
+
+    /**
+     * 将事件序列化为 Outbox 持久化载荷。
+     *
+     * @param event 待序列化订单事件
+     * @return JSON 格式的事件载荷
+     */
     private String toJson(OrderEvent event) {
         try {
             return objectMapper.writeValueAsString(event);

@@ -9,7 +9,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 /**
- * 撮合成交事件：Matching Engine 发布，Clearing / Market / Notification 消费
+ * 撮合成交事件：由撮合引擎发布，供清算、行情和通知服务消费。
  */
 @Data
 @Builder
@@ -21,6 +21,12 @@ public class TradeEvent implements Serializable {
 
     /** 成交ID（撮合引擎生成，单调递增） */
     private String tradeId;
+
+    /** 事件ID（下游消费者幂等键） */
+    private String eventId;
+
+    /** 触发成交的撮合命令序号 */
+    private Long sequence;
 
     /** 交易对，如 BTC/USDT */
     private String symbol;

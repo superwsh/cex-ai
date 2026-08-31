@@ -9,7 +9,7 @@ import java.io.Serializable;
 import java.math.BigDecimal;
 
 /**
- * 订单事件：Order Service 通过 Outbox 模式发布，Matching Engine 消费
+ * 订单事件：订单服务通过本地消息表模式发布，由撮合引擎消费。
  */
 @Data
 @Builder
@@ -34,6 +34,15 @@ public class OrderEvent implements Serializable {
         CANCEL   // 撤销
     }
 
+    public enum TimeInForce {
+        GTC,
+        IOC,
+        FOK
+    }
+
+    /** 事件ID（Outbox 生成，用于消费者幂等） */
+    private String eventId;
+
     /** 订单ID（订单服务生成，全局唯一） */
     private String orderId;
 
@@ -57,6 +66,12 @@ public class OrderEvent implements Serializable {
 
     /** 委托数量 */
     private BigDecimal quantity;
+
+    /** 市价买单可使用的计价资产预算 */
+    private BigDecimal quoteAmount;
+
+    /** 剩余数量的处置规则 */
+    private TimeInForce timeInForce;
 
     /** 客户端订单号(幂等键,撮合引擎回报时原样带回) */
     private String clientOrderId;

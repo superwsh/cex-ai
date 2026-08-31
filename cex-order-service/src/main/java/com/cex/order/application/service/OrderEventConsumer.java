@@ -18,7 +18,7 @@ import java.time.LocalDateTime;
 
 /**
  * 成交回报消费者:撮合引擎发布 TradeEvent 到 cex.trade.event,本服务更新订单成交状态
- * 幂等:eventId(tradeId) + consumer 唯一约束,重复消息直接忽略
+ * 幂等:eventId + consumer 唯一约束,重复消息直接忽略；兼容旧消息时回退使用 tradeId
  * 事务边界:check + 更新 + 记录 processed_event 在同一事务,消费失败回滚无副作用
  */
 @Slf4j
@@ -34,19 +34,20 @@ public class OrderEventConsumer {
     @KafkaListener(topics = TopicConstants.TOPIC_TRADE_EVENT, groupId = "cex-order")
     @Transactional
     public void onTradeEvent(TradeEvent event) {
-        if (event == null || event.getTradeId() == null) {
+        String eventId = resolveEventId(event);
+        if (eventId == null) {
             return;
         }
         // 幂等:已处理过则忽略(事务内检查,防并发重复)
-        if (processedEventRepository.exists(event.getTradeId(), CONSUMER)) {
-            log.info("成交事件已处理,忽略: tradeId={}", event.getTradeId());
+        if (processedEventRepository.exists(eventId, CONSUMER)) {
+            log.info("成交事件已处理,忽略: eventId={}, tradeId={}", eventId, event.getTradeId());
             return;
         }
         updateOrder(event.getBuyOrderId(), event.getQuantity(), event.getAmount());
         updateOrder(event.getSellOrderId(), event.getQuantity(), event.getAmount());
         // 记录幂等键;id 由 save 内部用雪花 ID 填充,保证单测可直接验证传入的 PO
         processedEventRepository.save(ProcessedEventPO.builder()
-                .eventId(event.getTradeId())
+                .eventId(eventId)
                 .consumer(CONSUMER)
                 .processedAt(LocalDateTime.now())
                 .build());
@@ -54,6 +55,29 @@ public class OrderEventConsumer {
                 event.getTradeId(), event.getSymbol(), event.getQuantity(), event.getPrice());
     }
 
+    /**
+     * 优先采用生产方提供的事件编号；为平滑处理旧版本消息，缺失时使用成交编号。
+     *
+     * @param event Kafka 收到的成交事件
+     * @return 可用于幂等记录的事件编号；事件无效时返回 null
+     */
+    private String resolveEventId(TradeEvent event) {
+        if (event == null) {
+            return null;
+        }
+        if (event.getEventId() != null && !event.getEventId().isBlank()) {
+            return event.getEventId();
+        }
+        return event.getTradeId();
+    }
+
+    /**
+     * 根据成交数量和金额推进单个订单的领域状态。
+     *
+     * @param orderIdStr 消息中的订单编号
+     * @param quantity 本次成交数量
+     * @param amount 本次成交金额
+     */
     private void updateOrder(String orderIdStr, BigDecimal quantity, BigDecimal amount) {
         if (orderIdStr == null) {
             return;
