@@ -4,6 +4,7 @@ import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.domain.model.MatchResult;
 import com.cex.matching.domain.model.OrderBookSnapshot;
 import com.cex.matching.domain.model.ProcessedMatchResultSnapshot;
+import com.cex.matching.domain.sequence.SequenceGapException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;
@@ -72,7 +73,12 @@ public class MatchingEngineRegistry {
         }
         try {
             SymbolMatchingEngine engine = engines.computeIfAbsent(event.getSymbol(), this::createEngine);
-            long sequence = engine.nextSequence();
+            if (event.getSequence() != null && event.getSequence() < engine.nextSequence()) {
+                LOGGER.warn("忽略已完成的历史撮合命令: eventId={}, symbol={}, sequence={}, lastSequence={}",
+                        event.getEventId(), event.getSymbol(), event.getSequence(), engine.nextSequence() - 1);
+                return Optional.empty();
+            }
+            long sequence = resolveSequence(event, engine);
             long commandStart = System.nanoTime();
             commandJournal.append(event.getSymbol(), sequence, event);
             long walDuration = System.nanoTime() - commandStart;
@@ -88,6 +94,22 @@ public class MatchingEngineRegistry {
     }
 
     /**
+     * 上游序号必须与当前交易对期望值完全一致；旧版空序号仅作兼容回退。
+     */
+    private long resolveSequence(OrderEvent event, SymbolMatchingEngine engine) {
+        long expected = engine.nextSequence();
+        Long supplied = event.getSequence();
+        if (supplied == null) {
+            return expected;
+        }
+        if (supplied > expected) {
+            matchingMetrics.recordSequenceGap(event.getSymbol());
+            throw new SequenceGapException(event.getSymbol(), expected, supplied);
+        }
+        return supplied;
+    }
+
+    /**
      * 获取指定交易对在当前命令边界的订单簿快照。
      *
      * @param symbol 需要快照的交易对
@@ -96,6 +118,11 @@ public class MatchingEngineRegistry {
     public Optional<OrderBookSnapshot> snapshot(String symbol) {
         SymbolMatchingEngine engine = engines.get(symbol);
         return engine == null ? Optional.empty() : Optional.of(withRecoveryData(symbol, engine.snapshot()));
+    }
+
+    /** 返回当前进程中已建立撮合状态的全部交易对。 */
+    public java.util.Set<String> activeSymbols() {
+        return java.util.Set.copyOf(engines.keySet());
     }
 
     /**
@@ -136,7 +163,10 @@ public class MatchingEngineRegistry {
      * @param symbol 已完成快照保存的交易对
      */
     public void confirmSnapshotPersisted(String symbol) {
-        resultsPendingSnapshot.remove(symbol);
+        ConcurrentHashMap<String, ProcessedMatchResultSnapshot> persisted = resultsPendingSnapshot.remove(symbol);
+        if (persisted != null) {
+            persisted.keySet().forEach(processedResults::remove);
+        }
     }
 
     /**

@@ -77,7 +77,30 @@ class SymbolMatchingEngineSnapshotTest {
 
         MatchResult redeliveredResult = restored.process(buyEvent).orElseThrow();
         assertThat(redeliveredResult.getTrades()).hasSize(1);
-        assertThat(redeliveredResult.getTrades().get(0).getTradeId()).isEqualTo(1L);
+        assertThat(redeliveredResult.getTrades().get(0).getTradeId()).isNotBlank();
+    }
+
+    @Test
+    void recover_shouldRestoreTenThousandCommandsFromSnapshotAndWal() {
+        InMemoryMatchingCommandJournal journal = new InMemoryMatchingCommandJournal();
+        MemorySnapshotRepository snapshots = new MemorySnapshotRepository();
+        MatchingEngineRegistry original = new MatchingEngineRegistry(journal);
+        MatchingSnapshotService snapshotService = new MatchingSnapshotService(original, snapshots, journal);
+
+        for (int index = 1; index <= 10_000; index++) {
+            original.process(limitEvent("buy-" + index, String.valueOf(index), OrderEvent.OrderSide.BUY, "1"));
+            if (index == 5_000) {
+                snapshotService.saveSnapshot("BTC_USDT");
+            }
+        }
+        OrderBookSnapshot expected = original.snapshot("BTC_USDT").orElseThrow();
+
+        MatchingEngineRegistry restored = new MatchingEngineRegistry(journal);
+        new MatchingRecoveryService(restored, snapshots, journal).recover("BTC_USDT");
+        OrderBookSnapshot actual = restored.snapshot("BTC_USDT").orElseThrow();
+
+        assertThat(actual.sequence()).isEqualTo(10_000L);
+        assertThat(actual.orders()).isEqualTo(expected.orders());
     }
 
     private OrderEvent limitEvent(String eventId, String orderId, OrderEvent.OrderSide side, String quantity) {

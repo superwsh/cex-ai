@@ -10,6 +10,7 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class InMemoryMatchingCommandJournal implements MatchingCommandJournal {
 
     private final ConcurrentHashMap<String, List<RecordedMatchingCommand>> commandsBySymbol = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> lastSequenceBySymbol = new ConcurrentHashMap<>();
 
     /**
      * 追加指定交易对的命令，并校验该交易对内序号连续。
@@ -21,11 +22,12 @@ public final class InMemoryMatchingCommandJournal implements MatchingCommandJour
     @Override
     public void append(String symbol, long sequence, OrderEvent event) {
         List<RecordedMatchingCommand> commands = commandsBySymbol.computeIfAbsent(symbol, key -> new java.util.ArrayList<>());
-        long expectedSequence = commands.stream().mapToLong(RecordedMatchingCommand::sequence).max().orElse(0L) + 1L;
+        long expectedSequence = lastSequenceBySymbol.getOrDefault(symbol, 0L) + 1L;
         if (sequence != expectedSequence) {
             throw new IllegalStateException("内存 WAL 命令序号不连续，期望=" + expectedSequence + "，实际=" + sequence);
         }
         commands.add(new RecordedMatchingCommand(symbol, sequence, event));
+        lastSequenceBySymbol.put(symbol, sequence);
     }
 
     /**

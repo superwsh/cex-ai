@@ -12,6 +12,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.time.Instant;
 import java.util.List;
 
@@ -37,6 +38,20 @@ class FileMatchingSnapshotRepositoryTest {
         assertThat(loaded.orders().get(0).remainingQuantity()).isEqualByComparingTo("0.6");
         assertThat(loaded.processedResults()).singleElement()
                 .extracting(ProcessedMatchResultSnapshot::eventId).isEqualTo("event-2");
+    }
+
+    @Test
+    void load_shouldFallBackWhenLatestSnapshotIsCorrupt() throws Exception {
+        FileMatchingSnapshotRepository repository = new FileMatchingSnapshotRepository(
+                new ObjectMapper().findAndRegisterModules(), temporaryDirectory.toString());
+        repository.save(snapshot(1L, "0.8"));
+        repository.save(snapshot(2L, "0.6"));
+        Path newest = Files.walk(temporaryDirectory)
+                .filter(path -> path.getFileName().toString().equals("snapshot-2.bin"))
+                .findFirst().orElseThrow();
+        Files.writeString(newest, "corrupt");
+
+        assertThat(repository.load("BTC_USDT").orElseThrow().sequence()).isEqualTo(1L);
     }
 
     private OrderBookSnapshot snapshot(long sequence, String remainingQuantity) {

@@ -20,6 +20,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
+import java.util.zip.CRC32C;
 
 /** 使用每交易对独立文件实现的命令预写日志。 */
 @Component
@@ -27,6 +28,12 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
 
     private final ObjectMapper objectMapper;
     private final Path walDirectory;
+    private final long maxFileSize;
+
+    /** 创建使用默认最大文件大小的文件 WAL，供测试与兼容调用使用。 */
+    public FileMatchingCommandJournal(ObjectMapper objectMapper, String walDirectoryPath) {
+        this(objectMapper, walDirectoryPath, 268435456L);
+    }
 
     /**
      * 创建文件 WAL 并确保日志目录可用。
@@ -35,9 +42,11 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
      * @param walDirectoryPath WAL 文件目录
      */
     public FileMatchingCommandJournal(ObjectMapper objectMapper,
-                                      @Value("${cex.matching.wal-directory:data/matching/wal}") String walDirectoryPath) {
+                                      @Value("${cex.matching.wal-directory:data/matching/wal}") String walDirectoryPath,
+                                      @Value("${cex.matching.wal-max-file-size:268435456}") long maxFileSize) {
         this.objectMapper = objectMapper;
         this.walDirectory = Path.of(walDirectoryPath);
+        this.maxFileSize = maxFileSize;
         try {
             Files.createDirectories(walDirectory);
         } catch (IOException exception) {
@@ -55,7 +64,20 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
     @Override
     public void append(String symbol, long sequence, OrderEvent event) {
         String line = serialize(new RecordedMatchingCommand(symbol, sequence, event)) + System.lineSeparator();
-        try (FileChannel channel = FileChannel.open(fileOf(symbol), StandardOpenOption.CREATE,
+        Path target = fileOf(symbol);
+        try {
+            if (maxFileSize > 0 && Files.exists(target) && Files.size(target) > 0
+                    && Files.size(target) + line.getBytes(StandardCharsets.UTF_8).length > maxFileSize) {
+                try {
+                    Files.move(target, archivedFileOf(symbol), java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+                } catch (AtomicMoveNotSupportedException exception) {
+                    Files.move(target, archivedFileOf(symbol));
+                }
+            }
+        } catch (IOException exception) {
+            throw new IllegalStateException("撮合 WAL 滚动失败: symbol=" + symbol, exception);
+        }
+        try (FileChannel channel = FileChannel.open(target, StandardOpenOption.CREATE,
                 StandardOpenOption.WRITE, StandardOpenOption.APPEND)) {
             channel.write(ByteBuffer.wrap(line.getBytes(StandardCharsets.UTF_8)));
             channel.force(true);
@@ -73,13 +95,29 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
      */
     @Override
     public List<RecordedMatchingCommand> readAfter(String symbol, long sequence) {
-        Path file = fileOf(symbol);
-        if (!Files.exists(file)) {
-            return List.of();
-        }
         try {
-            return Files.readAllLines(file, StandardCharsets.UTF_8).stream().filter(line -> !line.isBlank())
-                    .map(this::deserialize).filter(command -> command.sequence() > sequence).toList();
+            java.util.TreeMap<Long, RecordedMatchingCommand> commands = new java.util.TreeMap<>();
+            for (Path file : filesOf(symbol)) {
+            List<String> lines = Files.readAllLines(file, StandardCharsets.UTF_8);
+            for (int index = 0; index < lines.size(); index++) {
+                String line = lines.get(index);
+                if (line.isBlank()) {
+                    continue;
+                }
+                try {
+                    RecordedMatchingCommand command = deserialize(line);
+                    if (command.sequence() > sequence) {
+                        commands.putIfAbsent(command.sequence(), command);
+                    }
+                } catch (IllegalStateException exception) {
+                    if (index == lines.size() - 1) {
+                        break; // 宕机产生的 incomplete tail 不阻断此前有效记录恢复
+                    }
+                    throw exception;
+                }
+            }
+            }
+            return List.copyOf(commands.values());
         } catch (IOException exception) {
             throw new IllegalStateException("撮合 WAL 读取失败: symbol=" + symbol, exception);
         }
@@ -93,7 +131,7 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
     @Override
     public Set<String> symbols() {
         try (var files = Files.list(walDirectory)) {
-            return files.filter(path -> path.getFileName().toString().endsWith(".wal"))
+            return files.filter(this::isWalSegment)
                     .map(this::symbolOf).collect(Collectors.toUnmodifiableSet());
         } catch (IOException exception) {
             throw new IllegalStateException("撮合 WAL 目录扫描失败: " + walDirectory, exception);
@@ -109,16 +147,23 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
     @Override
     public void compact(String symbol, long inclusiveSequence) {
         Path target = fileOf(symbol);
-        if (!Files.exists(target)) {
-            return;
-        }
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         try {
-            String retained = Files.readAllLines(target, StandardCharsets.UTF_8).stream().filter(line -> !line.isBlank())
-                    .map(this::deserialize).filter(command -> command.sequence() > inclusiveSequence)
+            if (filesOf(symbol).isEmpty()) {
+                return;
+            }
+            String retained = readAfter(symbol, inclusiveSequence).stream()
                     .map(this::serialize).collect(Collectors.joining(System.lineSeparator()));
-            Files.writeString(temporary, retained.isBlank() ? "" : retained + System.lineSeparator(), StandardCharsets.UTF_8);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+                channel.write(ByteBuffer.wrap((retained.isBlank() ? "" : retained + System.lineSeparator())
+                        .getBytes(StandardCharsets.UTF_8)));
+                channel.force(true);
+            }
             moveReplacingTarget(temporary, target);
+            for (Path archived : archivedFilesOf(symbol)) {
+                Files.deleteIfExists(archived);
+            }
         } catch (IOException exception) {
             throw new IllegalStateException("撮合 WAL 裁剪失败: symbol=" + symbol, exception);
         }
@@ -148,7 +193,10 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
      */
     private String serialize(RecordedMatchingCommand command) {
         try {
-            return objectMapper.writeValueAsString(command);
+            byte[] payload = objectMapper.writeValueAsBytes(command);
+            CRC32C checksum = new CRC32C();
+            checksum.update(payload, 0, payload.length);
+            return Base64.getEncoder().encodeToString(payload) + ":" + Long.toUnsignedString(checksum.getValue());
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("撮合 WAL 序列化失败", exception);
         }
@@ -162,8 +210,19 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
      */
     private RecordedMatchingCommand deserialize(String line) {
         try {
-            return objectMapper.readValue(line, RecordedMatchingCommand.class);
-        } catch (JsonProcessingException exception) {
+            int separator = line.lastIndexOf(':');
+            if (separator <= 0 || separator == line.length() - 1) {
+                throw new IllegalStateException("WAL 记录缺少 checksum");
+            }
+            byte[] payload = Base64.getDecoder().decode(line.substring(0, separator));
+            long expected = Long.parseUnsignedLong(line.substring(separator + 1));
+            CRC32C checksum = new CRC32C();
+            checksum.update(payload, 0, payload.length);
+            if (checksum.getValue() != expected) {
+                throw new IllegalStateException("WAL checksum 校验失败");
+            }
+            return objectMapper.readValue(payload, RecordedMatchingCommand.class);
+        } catch (IOException | IllegalArgumentException exception) {
             throw new IllegalStateException("撮合 WAL 内容损坏", exception);
         }
     }
@@ -180,6 +239,58 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
         return walDirectory.resolve(fileName + ".wal");
     }
 
+    /** 获取一个不会覆盖既有归档的滚动文件路径。 */
+    private Path archivedFileOf(String symbol) throws IOException {
+        String base = fileOf(symbol).getFileName().toString();
+        int index = 1;
+        Path candidate;
+        do {
+            candidate = walDirectory.resolve(base + "." + String.format("%06d", index++));
+        } while (Files.exists(candidate));
+        return candidate;
+    }
+
+    private List<Path> filesOf(String symbol) throws IOException {
+        Path active = fileOf(symbol);
+        String base = active.getFileName().toString();
+        try (var files = Files.list(walDirectory)) {
+            return files.filter(path -> path.getFileName().toString().equals(base)
+                    || path.getFileName().toString().matches(java.util.regex.Pattern.quote(base) + "\\.\\d{6}"))
+                    .sorted(java.util.Comparator.comparingInt(path -> segmentIndex(path, base)))
+                    .toList();
+        }
+    }
+
+    /**
+     * 归档段必须先于活动段读取，避免文件名字典序将活动段排到最前面。
+     *
+     * @param file WAL 分段文件
+     * @param base 活动 WAL 文件名
+     * @return 归档编号；活动段固定排在最后
+     */
+    private int segmentIndex(Path file, String base) {
+        String fileName = file.getFileName().toString();
+        if (base.equals(fileName)) {
+            return Integer.MAX_VALUE;
+        }
+        return Integer.parseInt(fileName.substring((base + ".").length()));
+    }
+
+    private List<Path> archivedFilesOf(String symbol) throws IOException {
+        Path active = fileOf(symbol);
+        String base = active.getFileName().toString();
+        try (var files = Files.list(walDirectory)) {
+            return files.filter(path -> path.getFileName().toString()
+                    .matches(java.util.regex.Pattern.quote(base) + "\\.\\d{6}")).toList();
+        }
+    }
+
+    /** 判断文件是否为活动 WAL 或已滚动的 WAL 分段。 */
+    private boolean isWalSegment(Path file) {
+        String fileName = file.getFileName().toString();
+        return fileName.endsWith(".wal") || fileName.matches(".+\\.wal\\.\\d{6}");
+    }
+
     /**
      * 从 WAL 文件名解码交易对。
      *
@@ -188,7 +299,8 @@ public class FileMatchingCommandJournal implements MatchingCommandJournal {
      */
     private String symbolOf(Path file) {
         String fileName = file.getFileName().toString();
-        String encodedSymbol = fileName.substring(0, fileName.length() - ".wal".length());
+        int suffixIndex = fileName.indexOf(".wal");
+        String encodedSymbol = fileName.substring(0, suffixIndex);
         return new String(Base64.getUrlDecoder().decode(encodedSymbol), StandardCharsets.UTF_8);
     }
 }

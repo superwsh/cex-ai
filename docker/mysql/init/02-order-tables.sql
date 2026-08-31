@@ -52,6 +52,15 @@ CREATE TABLE IF NOT EXISTS order_event_outbox
     KEY idx_status_next_retry (status, next_retry_time)
 ) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '订单事件发件箱';
 
+-- 撮合命令交易对内序号：与订单和 Outbox 事件在同一事务中更新，作为跨实例恢复的唯一顺序来源
+CREATE TABLE IF NOT EXISTS matching_command_sequence
+(
+    symbol        VARCHAR(32) NOT NULL COMMENT '交易对,如 BTC_USDT',
+    last_sequence BIGINT      NOT NULL COMMENT '已分配的最大撮合命令序号',
+    updated_at    DATETIME    NOT NULL COMMENT '最后分配时间',
+    PRIMARY KEY (symbol)
+) ENGINE = InnoDB DEFAULT CHARSET = utf8mb4 COLLATE = utf8mb4_unicode_ci COMMENT = '撮合命令交易对内序号';
+
 -- 已处理事件表(消费幂等)
 CREATE TABLE IF NOT EXISTS processed_event
 (

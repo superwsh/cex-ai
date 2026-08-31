@@ -134,7 +134,7 @@ public final class InMemoryMatchingEngine {
                 break;
             }
             MatchOrder makerOrder = oppositeLevel.getFirstOrder();
-            Trade trade = createTrade(makerOrder, takerOrder);
+            Trade trade = createTrade(makerOrder, takerOrder, trades.size());
             if (trade == null) {
                 break;
             }
@@ -193,13 +193,13 @@ public final class InMemoryMatchingEngine {
      * @param takerOrder 当前进入撮合器的订单
      * @return 不可变成交记录；市价买单预算不足一个最小可表示数量时返回 null
      */
-    private Trade createTrade(MatchOrder makerOrder, MatchOrder takerOrder) {
+    private Trade createTrade(MatchOrder makerOrder, MatchOrder takerOrder, int matchIndex) {
         BigDecimal quantity = calculateTradeQuantity(makerOrder, takerOrder);
         if (quantity.signum() <= 0) {
             return null;
         }
         return Trade.builder()
-                .tradeId(nextTradeId())
+                .tradeId(deterministicTradeId(makerOrder, takerOrder, matchIndex))
                 .symbol(orderBook.getSymbol())
                 .makerOrderId(makerOrder.getOrderId())
                 .takerOrderId(takerOrder.getOrderId())
@@ -396,6 +396,21 @@ public final class InMemoryMatchingEngine {
     }
 
     /**
+     * 以交易对、命令序号和成交位置计算稳定成交编号，重放不依赖进程内计数器。
+     *
+     * @param makerOrder 挂单方订单
+     * @param takerOrder 吃单方订单
+     * @param matchIndex 同一命令内的成交序号
+     * @return 正数成交编号
+     */
+    private String deterministicTradeId(MatchOrder makerOrder, MatchOrder takerOrder, int matchIndex) {
+        String encodedSymbol = java.util.Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(orderBook.getSymbol().getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        return encodedSymbol + '-' + takerOrder.getSequence() + '-' + takerOrder.getOrderId()
+                + '-' + makerOrder.getOrderId() + '-' + matchIndex;
+    }
+
+    /**
      * 使用订单自身的序号和时间创建并追加领域事件。
      *
      * @param events 需要追加事件的集合
@@ -403,7 +418,7 @@ public final class InMemoryMatchingEngine {
      * @param type 事件类型
      * @param tradeId 成交事件关联的成交编号；订单事件为 null
      */
-    private void emit(List<OrderEvent> events, MatchOrder order, OrderEventType type, Long tradeId) {
+    private void emit(List<OrderEvent> events, MatchOrder order, OrderEventType type, String tradeId) {
         EventContext context = new EventContext(order.getSequence(), order.getCreatedAt(), events.size());
         events.add(createEvent(order, type, tradeId, context));
     }
@@ -417,7 +432,7 @@ public final class InMemoryMatchingEngine {
      * @param context 命令序号、时间和同命令内事件偏移量
      * @return 不可变领域事件
      */
-    private OrderEvent createEvent(MatchOrder order, OrderEventType type, Long tradeId,
+    private OrderEvent createEvent(MatchOrder order, OrderEventType type, String tradeId,
                                    EventContext context) {
         String eventId = context.sequence + ":" + type + ":" + order.getOrderId() + ":" + context.offset;
         return OrderEvent.builder()
@@ -428,6 +443,8 @@ public final class InMemoryMatchingEngine {
                 .timestamp(context.timestamp)
                 .type(type)
                 .tradeId(tradeId)
+                .filledQuantity(order.getFilledQuantity())
+                .remainingQuantity(order.getRemainingQuantity())
                 .build();
     }
 

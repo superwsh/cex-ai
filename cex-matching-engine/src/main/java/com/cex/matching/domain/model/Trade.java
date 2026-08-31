@@ -9,7 +9,7 @@ import java.util.Objects;
 /** 一次实际成交的不可变记录，成交价格始终使用挂单方价格。 */
 public final class Trade {
 
-    private final long tradeId;
+    private final String tradeId;
     private final String symbol;
     private final long makerOrderId;
     private final long takerOrderId;
@@ -39,7 +39,7 @@ public final class Trade {
         return new Builder();
     }
 
-    public long getTradeId() {
+    public String getTradeId() {
         return tradeId;
     }
 
@@ -85,7 +85,7 @@ public final class Trade {
     }
 
     private static void validateBuilder(Builder builder) {
-        if (builder.tradeId <= 0 || builder.makerOrderId <= 0
+        if (builder.tradeId == null || builder.tradeId.isBlank() || builder.makerOrderId <= 0
                 || builder.takerOrderId <= 0 || builder.sequence < 0) {
             throw new IllegalArgumentException("成交标识和序号必须有效");
         }
@@ -107,7 +107,7 @@ public final class Trade {
     /** 用于构造成交记录的构造器。 */
     public static final class Builder {
 
-        private long tradeId;
+        private String tradeId;
         private String symbol;
         private long makerOrderId;
         private long takerOrderId;
@@ -117,7 +117,7 @@ public final class Trade {
         private Instant timestamp;
         private long sequence;
 
-        public Builder tradeId(long tradeId) {
+        public Builder tradeId(String tradeId) {
             this.tradeId = tradeId;
             return this;
         }

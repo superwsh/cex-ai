@@ -16,6 +16,7 @@ public class KafkaMatchingEngine implements MatchingEngine {
 
     private final MatchingEngineRegistry matchingEngineRegistry;
     private final TradeEventMapper tradeEventMapper = new TradeEventMapper();
+    private final OrderResultEventMapper orderResultEventMapper = new OrderResultEventMapper();
 
     /**
      * 撮合订单事件，并将本次或重试时缓存的成交事件逐笔交给调用方。
@@ -26,6 +27,16 @@ public class KafkaMatchingEngine implements MatchingEngine {
     @Override
     public void match(OrderEvent event, Consumer<TradeEvent> onTrade) {
         matchingEngineRegistry.process(event).ifPresent(result -> publishTrades(result, onTrade));
+    }
+
+    @Override
+    public void match(OrderEvent event, Consumer<TradeEvent> onTrade,
+                      Consumer<com.cex.common.kafka.event.OrderResultEvent> onOrderResult) {
+        matchingEngineRegistry.process(event).ifPresent(result -> {
+            publishTrades(result, onTrade);
+            result.getEvents().stream().map(orderResultEventMapper::toOrderResultEvent)
+                    .filter(java.util.Objects::nonNull).forEach(onOrderResult);
+        });
     }
 
     /**

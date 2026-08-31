@@ -1,6 +1,7 @@
 package com.cex.order.application.service;
 
 import com.cex.common.kafka.event.TradeEvent;
+import com.cex.common.kafka.event.OrderResultEvent;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.model.OrderSide;
 import com.cex.order.domain.model.OrderStatus;
@@ -113,6 +114,23 @@ class OrderEventConsumerTest {
 
         // 状态冲突(订单已取消)不抛异常、不更新订单,但幂等记录照常写入(视为已消费,避免重试风暴)
         verify(orderRepository, never()).update(any());
+        verify(processedEventRepository).save(any(ProcessedEventPO.class));
+    }
+
+    @Test
+    void onOrderResultEvent_shouldUpdateRejectedOrderAndRecordIdempotency() {
+        Order order = openBuyOrder(1L);
+        OrderResultEvent event = OrderResultEvent.builder().eventId("result-1").orderId("1")
+                .symbol("BTC_USDT").sequence(1L).type(OrderResultEvent.OrderResultType.ORDER_REJECTED)
+                .filledQuantity(BigDecimal.ZERO).remainingQuantity(new BigDecimal("0.1"))
+                .timestamp(System.currentTimeMillis()).build();
+        when(processedEventRepository.exists("result-1", OrderEventConsumer.ORDER_RESULT_CONSUMER)).thenReturn(false);
+        when(orderRepository.findByOrderId(1L)).thenReturn(order);
+
+        consumer.onOrderResultEvent(event);
+
+        assertThat(order.getStatus()).isEqualTo(OrderStatus.REJECTED);
+        verify(orderRepository).update(order);
         verify(processedEventRepository).save(any(ProcessedEventPO.class));
     }
 }

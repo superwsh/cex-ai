@@ -2,6 +2,7 @@ package com.cex.order.application.service;
 
 import com.cex.order.domain.model.Order;
 import com.cex.order.infrastructure.persistence.entity.OrderEventOutboxPO;
+import com.cex.order.infrastructure.repository.MatchingCommandSequenceRepository;
 import com.cex.order.infrastructure.repository.OutboxRepository;
 import com.cex.order.infrastructure.id.SnowflakeGenerator;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -27,6 +28,7 @@ public class OrderEventPublisher {
     public static final String EVENT_ORDER_CANCELED = "ORDER_CANCELED";
 
     private final OutboxRepository outboxRepository;
+    private final MatchingCommandSequenceRepository matchingCommandSequenceRepository;
     private final SnowflakeGenerator snowflakeGenerator;
     private final ObjectMapper objectMapper;
 
@@ -37,8 +39,10 @@ public class OrderEventPublisher {
      */
     public void publishOrderCreated(Order order) {
         String eventId = UUID.randomUUID().toString();
+        long sequence = matchingCommandSequenceRepository.allocateNext(order.getSymbol());
         OrderEvent event = OrderEvent.builder()
                 .eventId(eventId)
+                .sequence(sequence)
                 .orderId(String.valueOf(order.getOrderId()))
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())
@@ -62,8 +66,10 @@ public class OrderEventPublisher {
      */
     public void publishOrderCanceled(Order order) {
         String eventId = UUID.randomUUID().toString();
+        long sequence = matchingCommandSequenceRepository.allocateNext(order.getSymbol());
         OrderEvent event = OrderEvent.builder()
                 .eventId(eventId)
+                .sequence(sequence)
                 .orderId(String.valueOf(order.getOrderId()))
                 .clientOrderId(order.getClientOrderId())
                 .userId(order.getUserId())

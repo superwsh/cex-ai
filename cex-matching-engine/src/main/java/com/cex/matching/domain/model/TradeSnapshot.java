@@ -7,7 +7,7 @@ import java.time.Instant;
 import java.util.Objects;
 
 /** 用于在快照中保存成交重投所需字段的不可变记录。 */
-public record TradeSnapshot(long tradeId, String symbol, long makerOrderId, long takerOrderId,
+public record TradeSnapshot(String tradeId, String symbol, long makerOrderId, long takerOrderId,
                             OrderSide makerSide, BigDecimal price, BigDecimal quantity,
                             Instant timestamp, long sequence) {
 
@@ -15,7 +15,7 @@ public record TradeSnapshot(long tradeId, String symbol, long makerOrderId, long
      * 校验成交快照字段。
      */
     public TradeSnapshot {
-        if (tradeId <= 0 || makerOrderId <= 0 || takerOrderId <= 0 || sequence < 0) {
+        if (tradeId == null || tradeId.isBlank() || makerOrderId <= 0 || takerOrderId <= 0 || sequence < 0) {
             throw new IllegalArgumentException("成交快照标识和序号必须有效");
         }
         if (symbol == null || symbol.isBlank()) {

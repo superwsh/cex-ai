@@ -17,7 +17,7 @@ public final class TradeEventMapper {
         boolean makerIsBuyer = trade.getMakerSide() == OrderSide.BUY;
         return TradeEvent.builder()
                 .eventId("trade-" + trade.getTradeId())
-                .tradeId(String.valueOf(trade.getTradeId()))
+                .tradeId(trade.getTradeId())
                 .sequence(trade.getSequence())
                 .symbol(trade.getSymbol())
                 .buyOrderId(String.valueOf(makerIsBuyer ? trade.getMakerOrderId() : trade.getTakerOrderId()))

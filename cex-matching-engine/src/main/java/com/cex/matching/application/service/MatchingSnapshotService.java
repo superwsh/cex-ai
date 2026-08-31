@@ -58,6 +58,11 @@ public class MatchingSnapshotService {
         return snapshot;
     }
 
+    /** 在 Kafka 分区释放前保存当前全部订单簿。 */
+    public void saveAllSnapshots() {
+        matchingEngineRegistry.activeSymbols().forEach(this::saveSnapshot);
+    }
+
     /**
      * 先持久化完整快照，成功后才裁剪已被快照覆盖的 WAL。
      *

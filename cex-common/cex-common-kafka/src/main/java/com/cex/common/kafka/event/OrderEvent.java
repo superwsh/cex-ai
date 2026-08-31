@@ -19,6 +19,9 @@ public class OrderEvent implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /** 交易对内严格连续的撮合命令序号；旧版消息可为空。 */
+    private Long sequence;
+
     public enum OrderType {
         LIMIT,   // 限价
         MARKET   // 市价

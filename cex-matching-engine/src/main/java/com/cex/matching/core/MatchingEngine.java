@@ -2,6 +2,7 @@ package com.cex.matching.core;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.common.kafka.event.TradeEvent;
+import com.cex.common.kafka.event.OrderResultEvent;
 
 import java.util.function.Consumer;
 
@@ -25,4 +26,16 @@ public interface MatchingEngine {
      * @param onTrade 成交回调：调用方负责将 TradeEvent 发布到 Kafka
      */
     void match(OrderEvent event, Consumer<TradeEvent> onTrade);
+
+    /**
+     * 撮合并同步输出成交和订单状态结果。
+     *
+     * @param event 订单命令
+     * @param onTrade 成交输出
+     * @param onOrderResult 订单结果输出
+     */
+    default void match(OrderEvent event, Consumer<TradeEvent> onTrade,
+                       Consumer<OrderResultEvent> onOrderResult) {
+        match(event, onTrade);
+    }
 }

@@ -3,6 +3,7 @@ package com.cex.matching.domain.model;
 import com.cex.matching.domain.enums.OrderEventType;
 
 import java.time.Instant;
+import java.math.BigDecimal;
 import java.util.Objects;
 
 /** 撮合领域生成的不可变事件，可作为下游幂等键的来源。 */
@@ -14,7 +15,9 @@ public final class OrderEvent {
     private final String symbol;
     private final Instant timestamp;
     private final OrderEventType type;
-    private final Long tradeId;
+    private final String tradeId;
+    private final BigDecimal filledQuantity;
+    private final BigDecimal remainingQuantity;
 
     private OrderEvent(Builder builder) {
         validateBuilder(builder);
@@ -25,6 +28,8 @@ public final class OrderEvent {
         this.timestamp = builder.timestamp;
         this.type = builder.type;
         this.tradeId = builder.tradeId;
+        this.filledQuantity = builder.filledQuantity;
+        this.remainingQuantity = builder.remainingQuantity;
     }
 
     /** 创建事件构造器，避免多参数构造函数。 */
@@ -56,9 +61,11 @@ public final class OrderEvent {
         return type;
     }
 
-    public Long getTradeId() {
+    public String getTradeId() {
         return tradeId;
     }
+    public BigDecimal getFilledQuantity() { return filledQuantity; }
+    public BigDecimal getRemainingQuantity() { return remainingQuantity; }
 
     private static void validateBuilder(Builder builder) {
         if (builder.eventId == null || builder.eventId.isBlank()
@@ -81,7 +88,9 @@ public final class OrderEvent {
         private String symbol;
         private Instant timestamp;
         private OrderEventType type;
-        private Long tradeId;
+        private String tradeId;
+        private BigDecimal filledQuantity;
+        private BigDecimal remainingQuantity;
 
         public Builder eventId(String eventId) {
             this.eventId = eventId;
@@ -113,10 +122,12 @@ public final class OrderEvent {
             return this;
         }
 
-        public Builder tradeId(Long tradeId) {
+        public Builder tradeId(String tradeId) {
             this.tradeId = tradeId;
             return this;
         }
+        public Builder filledQuantity(BigDecimal filledQuantity) { this.filledQuantity = filledQuantity; return this; }
+        public Builder remainingQuantity(BigDecimal remainingQuantity) { this.remainingQuantity = remainingQuantity; return this; }
 
         /** 校验并创建事件。 */
         public OrderEvent build() {

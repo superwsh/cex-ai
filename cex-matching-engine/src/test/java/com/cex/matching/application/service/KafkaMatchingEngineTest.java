@@ -22,10 +22,36 @@ class KafkaMatchingEngineTest {
 
         assertThat(tradeEvents).hasSize(1);
         TradeEvent tradeEvent = tradeEvents.get(0);
-        assertThat(tradeEvent.getEventId()).isEqualTo("trade-1");
+        assertThat(tradeEvent.getEventId()).startsWith("trade-");
         assertThat(tradeEvent.getBuyOrderId()).isEqualTo("2");
         assertThat(tradeEvent.getSellOrderId()).isEqualTo("1");
         assertThat(tradeEvent.getAmount()).isEqualByComparingTo("50");
+    }
+
+    @Test
+    void match_shouldGenerateSameTradeIdWhenReplayingSameCommands() {
+        List<TradeEvent> first = matchPair(new KafkaMatchingEngine(new MatchingEngineRegistry()));
+        List<TradeEvent> second = matchPair(new KafkaMatchingEngine(new MatchingEngineRegistry()));
+
+        assertThat(second.get(0).getTradeId()).isEqualTo(first.get(0).getTradeId());
+    }
+
+    @Test
+    void match_shouldPublishOrderResultEvents() {
+        KafkaMatchingEngine matchingEngine = new KafkaMatchingEngine(new MatchingEngineRegistry());
+        List<com.cex.common.kafka.event.OrderResultEvent> results = new ArrayList<>();
+        matchingEngine.match(limitEvent("sell-event", "1", OrderEvent.OrderSide.SELL), ignored -> { }, results::add);
+        matchingEngine.match(limitEvent("buy-event", "2", OrderEvent.OrderSide.BUY), ignored -> { }, results::add);
+
+        assertThat(results).extracting(com.cex.common.kafka.event.OrderResultEvent::getType)
+                .contains(com.cex.common.kafka.event.OrderResultEvent.OrderResultType.ORDER_FILLED);
+    }
+
+    private List<TradeEvent> matchPair(KafkaMatchingEngine matchingEngine) {
+        List<TradeEvent> events = new ArrayList<>();
+        matchingEngine.match(limitEvent("sell-event", "1", OrderEvent.OrderSide.SELL), events::add);
+        matchingEngine.match(limitEvent("buy-event", "2", OrderEvent.OrderSide.BUY), events::add);
+        return events;
     }
 
     private OrderEvent limitEvent(String eventId, String orderId, OrderEvent.OrderSide side) {

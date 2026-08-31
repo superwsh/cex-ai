@@ -8,6 +8,7 @@ import org.junit.jupiter.api.io.TempDir;
 
 import java.math.BigDecimal;
 import java.nio.file.Path;
+import java.nio.file.Files;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -43,6 +44,38 @@ class FileMatchingCommandJournalTest {
         List<RecordedMatchingCommand> commands = journal.readAfter("BTC_USDT", 0L);
         assertThat(commands).hasSize(1);
         assertThat(commands.get(0).sequence()).isEqualTo(2L);
+    }
+
+    @Test
+    void readAfter_shouldIgnoreIncompleteTailButKeepValidRecords() throws Exception {
+        FileMatchingCommandJournal journal = new FileMatchingCommandJournal(
+                new ObjectMapper().findAndRegisterModules(), temporaryDirectory.toString());
+        journal.append("BTC_USDT", 1L, event("event-1", "1"));
+        Path wal = Files.list(temporaryDirectory).findFirst().orElseThrow();
+        Files.writeString(wal, "broken-tail", java.nio.file.StandardOpenOption.APPEND);
+
+        assertThat(journal.readAfter("BTC_USDT", 0L)).singleElement()
+                .extracting(RecordedMatchingCommand::sequence).isEqualTo(1L);
+    }
+
+    @Test
+    void append_shouldReadArchivedSegmentsBeforeActiveSegmentAndDiscoverArchivedSymbol() throws Exception {
+        FileMatchingCommandJournal journal = new FileMatchingCommandJournal(
+                new ObjectMapper().findAndRegisterModules(), temporaryDirectory.toString(), 1L);
+        journal.append("BTC_USDT", 1L, event("event-1", "1"));
+        journal.append("BTC_USDT", 2L, event("event-2", "2"));
+
+        assertThat(journal.readAfter("BTC_USDT", 0L))
+                .extracting(RecordedMatchingCommand::sequence).containsExactly(1L, 2L);
+
+        Path activeWal = Files.list(temporaryDirectory)
+                .filter(path -> path.getFileName().toString().endsWith(".wal"))
+                .findFirst().orElseThrow();
+        Files.delete(activeWal);
+
+        assertThat(journal.symbols()).containsExactly("BTC_USDT");
+        assertThat(journal.readAfter("BTC_USDT", 0L))
+                .extracting(RecordedMatchingCommand::sequence).containsExactly(1L);
     }
 
     private OrderEvent event(String eventId, String orderId) {

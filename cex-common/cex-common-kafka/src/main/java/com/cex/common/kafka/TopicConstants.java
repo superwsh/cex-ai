@@ -14,6 +14,9 @@ public final class TopicConstants {
     /** 撮合成交事件，Matching Engine -> Clearing / Market / Notification */
     public static final String TOPIC_TRADE_EVENT = "cex.trade.event";
 
+    /** 撮合订单状态结果，Matching Engine -> Order Service。 */
+    public static final String TOPIC_ORDER_RESULT_EVENT = "cex.matching.order-result";
+
     /** 资产变更事件，Clearing/Asset Service 对外广播 */
     public static final String TOPIC_ASSET_CHANGE = "cex.asset.change";
 

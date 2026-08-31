@@ -19,6 +19,9 @@ public class PeriodicMatchingSnapshotService {
     @Value("${cex.matching.snapshot-interval:1000}")
     private long snapshotInterval;
 
+    @Value("${cex.matching.snapshot-enabled:true}")
+    private boolean snapshotEnabled;
+
     /**
      * 在一条订单命令及其成交事件成功处理后，按配置间隔保存快照。
      *
@@ -27,7 +30,7 @@ public class PeriodicMatchingSnapshotService {
     public void snapshotIfDue(OrderEvent event) {
         long commandCount = processedCommandCounts.computeIfAbsent(event.getSymbol(), key -> new AtomicLong())
                 .incrementAndGet();
-        if (snapshotInterval > 0 && commandCount % snapshotInterval == 0) {
+        if (snapshotEnabled && snapshotInterval > 0 && commandCount % snapshotInterval == 0) {
             matchingSnapshotService.saveSnapshot(event.getSymbol());
         }
     }

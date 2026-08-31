@@ -13,6 +13,10 @@ import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.ByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.file.StandardOpenOption;
+import java.util.Comparator;
 import java.util.Base64;
 import java.util.Optional;
 
@@ -47,10 +51,17 @@ public class FileMatchingSnapshotRepository implements MatchingSnapshotRepositor
      */
     @Override
     public void save(OrderBookSnapshot snapshot) {
-        Path target = fileOf(snapshot.symbol());
+        Path directory = directoryOf(snapshot.symbol());
+        Path target = directory.resolve("snapshot-" + snapshot.sequence() + ".bin");
         Path temporary = target.resolveSibling(target.getFileName() + ".tmp");
         try {
-            Files.writeString(temporary, objectMapper.writeValueAsString(snapshot), StandardCharsets.UTF_8);
+            Files.createDirectories(directory);
+            byte[] content = objectMapper.writeValueAsBytes(snapshot);
+            try (FileChannel channel = FileChannel.open(temporary, StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
+                channel.write(ByteBuffer.wrap(content));
+                channel.force(true);
+            }
             moveAtomically(temporary, target);
         } catch (IOException exception) {
             throw new IllegalStateException("撮合快照写入失败: symbol=" + snapshot.symbol(), exception);
@@ -65,13 +76,23 @@ public class FileMatchingSnapshotRepository implements MatchingSnapshotRepositor
      */
     @Override
     public Optional<OrderBookSnapshot> load(String symbol) {
-        Path file = fileOf(symbol);
-        if (!Files.exists(file)) {
+        Path directory = directoryOf(symbol);
+        if (!Files.isDirectory(directory)) {
             return Optional.empty();
         }
-        try {
-            return Optional.of(objectMapper.readValue(Files.readString(file, StandardCharsets.UTF_8),
-                    OrderBookSnapshot.class));
+        try (var files = Files.list(directory)) {
+            for (Path file : files.filter(this::isCompletedSnapshot)
+                    .sorted(Comparator.comparingLong(this::sequenceOf).reversed()).toList()) {
+                try {
+                    OrderBookSnapshot snapshot = objectMapper.readValue(Files.readAllBytes(file), OrderBookSnapshot.class);
+                    if (symbol.equals(snapshot.symbol()) && snapshot.sequence() == sequenceOf(file)) {
+                        return Optional.of(snapshot);
+                    }
+                } catch (IOException | RuntimeException ignoredCorruptSnapshot) {
+                    // 尝试更早的完整快照，.tmp 与损坏版本均不会阻断恢复。
+                }
+            }
+            return Optional.empty();
         } catch (IOException exception) {
             throw new IllegalStateException("撮合快照读取失败: symbol=" + symbol, exception);
         }
@@ -97,9 +118,19 @@ public class FileMatchingSnapshotRepository implements MatchingSnapshotRepositor
      * @param symbol 交易对
      * @return 交易对对应快照文件
      */
-    private Path fileOf(String symbol) {
+    private Path directoryOf(String symbol) {
         String fileName = Base64.getUrlEncoder().withoutPadding()
                 .encodeToString(symbol.getBytes(StandardCharsets.UTF_8));
-        return snapshotDirectory.resolve(fileName + ".snapshot");
+        return snapshotDirectory.resolve(fileName);
+    }
+
+    private boolean isCompletedSnapshot(Path path) {
+        String name = path.getFileName().toString();
+        return name.matches("snapshot-\\d+\\.bin");
+    }
+
+    private long sequenceOf(Path path) {
+        String name = path.getFileName().toString();
+        return Long.parseLong(name.substring("snapshot-".length(), name.length() - ".bin".length()));
     }
 }

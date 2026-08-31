@@ -103,6 +103,14 @@ public class MatchingMetrics {
                 .register(meterRegistry).record(duration);
     }
 
+    /** 记录一次需要暂停消费并恢复的命令序号缺口。 */
+    public void recordSequenceGap(String symbol) {
+        if (meterRegistry != null) {
+            Counter.builder("cex.matching.sequence.gap.total").tag("symbol", symbol)
+                    .register(meterRegistry).increment();
+        }
+    }
+
     /**
      * 为首次出现的交易对注册活动订单数仪表。
      *

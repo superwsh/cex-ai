@@ -2,6 +2,7 @@ package com.cex.order.application.service;
 
 import com.cex.common.kafka.TopicConstants;
 import com.cex.common.kafka.event.TradeEvent;
+import com.cex.common.kafka.event.OrderResultEvent;
 import com.cex.order.common.OrderStatusInvalidException;
 import com.cex.order.domain.model.Order;
 import com.cex.order.domain.repository.OrderRepository;
@@ -27,6 +28,7 @@ import java.time.LocalDateTime;
 public class OrderEventConsumer {
 
     public static final String CONSUMER = "ORDER_STATUS_CONSUMER";
+    public static final String ORDER_RESULT_CONSUMER = "ORDER_RESULT_CONSUMER";
 
     private final OrderRepository orderRepository;
     private final ProcessedEventRepository processedEventRepository;
@@ -53,6 +55,47 @@ public class OrderEventConsumer {
                 .build());
         log.info("成交回报处理完成: tradeId={}, symbol={}, quantity={}, price={}",
                 event.getTradeId(), event.getSymbol(), event.getQuantity(), event.getPrice());
+    }
+
+    /**
+     * 消费撮合端无法由逐笔成交推导的订单状态（拒绝、取消等）。
+     *
+     * @param event 撮合订单结果事件
+     */
+    @KafkaListener(topics = TopicConstants.TOPIC_ORDER_RESULT_EVENT, groupId = "cex-order")
+    @Transactional
+    public void onOrderResultEvent(OrderResultEvent event) {
+        if (event == null || event.getEventId() == null || event.getEventId().isBlank()) {
+            return;
+        }
+        if (processedEventRepository.exists(event.getEventId(), ORDER_RESULT_CONSUMER)) {
+            return;
+        }
+        try {
+            Order order = orderRepository.findByOrderId(Long.valueOf(event.getOrderId()));
+            if (order != null && !order.getStatus().isTerminal()) {
+                applyOrderResult(order, event);
+                orderRepository.update(order);
+            }
+            processedEventRepository.save(ProcessedEventPO.builder().eventId(event.getEventId())
+                    .consumer(ORDER_RESULT_CONSUMER).processedAt(LocalDateTime.now()).build());
+        } catch (NumberFormatException exception) {
+            log.warn("订单结果事件订单ID非法: eventId={}, orderId={}", event.getEventId(), event.getOrderId());
+        }
+    }
+
+    /** 根据撮合端权威结果更新本地订单状态和累计成交数量。 */
+    private void applyOrderResult(Order order, OrderResultEvent event) {
+        if (event.getFilledQuantity() != null) {
+            order.setFilledQuantity(event.getFilledQuantity());
+        }
+        order.setStatus(switch (event.getType()) {
+            case ORDER_REJECTED -> com.cex.order.domain.model.OrderStatus.REJECTED;
+            case ORDER_PARTIALLY_FILLED -> com.cex.order.domain.model.OrderStatus.PARTIALLY_FILLED;
+            case ORDER_FILLED -> com.cex.order.domain.model.OrderStatus.FILLED;
+            case ORDER_CANCELED -> com.cex.order.domain.model.OrderStatus.CANCELED;
+        });
+        order.setUpdatedAt(LocalDateTime.now());
     }
 
     /**

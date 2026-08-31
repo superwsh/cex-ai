@@ -12,8 +12,22 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import com.cex.matching.domain.sequence.SequenceGapException;
 
 class MatchingEngineRegistryTest {
+
+    @Test
+    void process_shouldRejectSequenceGapBeforeWalAndMatching() {
+        MatchingEngineRegistry registry = new MatchingEngineRegistry();
+        OrderEvent event = limitEvent("gap", "BTC_USDT", "1", OrderEvent.OrderSide.BUY, "100", "1");
+        event.setSequence(2L);
+
+        assertThatThrownBy(() -> registry.process(event))
+                .isInstanceOf(SequenceGapException.class)
+                .hasMessageContaining("expected=1");
+        assertThat(registry.snapshot("BTC_USDT").orElseThrow().sequence()).isZero();
+    }
 
     @Test
     void process_shouldMatchQuoteBudgetMarketBuyAndReturnCachedResultForDuplicateEvent() {

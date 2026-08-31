@@ -31,6 +31,9 @@ spring:
       properties:
         spring.json.trusted.packages: "com.cex.*"
         max.poll.records: 500
+      # offset 只在 WAL、撮合和结果事件全部成功后确认
+    listener:
+      ack-mode: manual_immediate
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
@@ -41,6 +44,8 @@ cex:
     wal-directory: ${MATCHING_WAL_DIRECTORY:data/matching/wal}
     snapshot-directory: ${MATCHING_SNAPSHOT_DIRECTORY:data/matching/snapshot}
     snapshot-interval: ${MATCHING_SNAPSHOT_INTERVAL:1000}
+    snapshot-enabled: ${MATCHING_SNAPSHOT_ENABLED:true}
+    wal-max-file-size: ${MATCHING_WAL_MAX_FILE_SIZE:268435456}
 
 management:
   endpoints:
