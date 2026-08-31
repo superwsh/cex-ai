@@ -4,6 +4,7 @@ import com.cex.matching.domain.enums.OrderSide;
 import com.cex.matching.domain.enums.OrderStatus;
 import com.cex.matching.domain.enums.OrderType;
 import com.cex.matching.domain.enums.TimeInForce;
+import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -28,27 +29,40 @@ public final class MatchOrder {
     private final long sequence;
     private OrderStatus status;
 
-    private MatchOrder(Builder builder) {
-        validateBuilder(builder);
-        this.orderId = builder.orderId;
-        this.userId = builder.userId;
-        this.symbol = builder.symbol;
-        this.side = builder.side;
-        this.type = builder.type;
-        this.price = builder.price;
-        this.quantity = builder.quantity;
-        this.remainingQuantity = builder.quantity;
-        this.quoteAmount = builder.quoteAmount;
-        this.remainingQuoteAmount = builder.quoteAmount;
-        this.timeInForce = builder.timeInForce;
-        this.createdAt = builder.createdAt;
-        this.sequence = builder.sequence;
+    /**
+     * 创建订单并初始化可变成交状态；由 Lombok 生成的 Builder 调用。
+     *
+     * @param orderId 订单编号
+     * @param userId 用户编号
+     * @param symbol 交易对
+     * @param side 买卖方向
+     * @param type 订单类型
+     * @param price 限价单价格
+     * @param quantity 基础资产数量
+     * @param quoteAmount 市价买单计价资产预算
+     * @param timeInForce 有效期类型
+     * @param createdAt 创建时间
+     * @param sequence 撮合序号
+     */
+    @Builder
+    private MatchOrder(long orderId, long userId, String symbol, OrderSide side, OrderType type,
+                       BigDecimal price, BigDecimal quantity, BigDecimal quoteAmount,
+                       TimeInForce timeInForce, Instant createdAt, long sequence) {
+        validate(orderId, userId, symbol, side, type, price, quantity, quoteAmount, timeInForce, createdAt, sequence);
+        this.orderId = orderId;
+        this.userId = userId;
+        this.symbol = symbol;
+        this.side = side;
+        this.type = type;
+        this.price = price;
+        this.quantity = quantity;
+        this.remainingQuantity = quantity;
+        this.quoteAmount = quoteAmount;
+        this.remainingQuoteAmount = quoteAmount;
+        this.timeInForce = timeInForce;
+        this.createdAt = createdAt;
+        this.sequence = sequence;
         this.status = OrderStatus.OPEN;
-    }
-
-    /** 创建订单构造器，避免多参数构造函数。 */
-    public static Builder builder() {
-        return new Builder();
     }
 
     /**
@@ -208,33 +222,35 @@ public final class MatchOrder {
         return status;
     }
 
-    private static void validateBuilder(Builder builder) {
-        if (builder.orderId <= 0 || builder.userId <= 0 || builder.sequence < 0) {
+    private static void validate(long orderId, long userId, String symbol, OrderSide side, OrderType type,
+                                 BigDecimal price, BigDecimal quantity, BigDecimal quoteAmount,
+                                 TimeInForce timeInForce, Instant createdAt, long sequence) {
+        if (orderId <= 0 || userId <= 0 || sequence < 0) {
             throw new IllegalArgumentException("订单标识和序号必须有效");
         }
-        if (builder.symbol == null || builder.symbol.isBlank()) {
+        if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("交易对不能为空");
         }
-        Objects.requireNonNull(builder.side, "买卖方向不能为空");
-        Objects.requireNonNull(builder.type, "订单类型不能为空");
-        Objects.requireNonNull(builder.timeInForce, "有效期类型不能为空");
-        Objects.requireNonNull(builder.createdAt, "创建时间不能为空");
-        if (builder.type == OrderType.LIMIT) {
-            requirePositive(builder.quantity, "订单数量");
-            requirePositive(builder.price, "限价单价格");
-            if (builder.quoteAmount != null) {
+        Objects.requireNonNull(side, "买卖方向不能为空");
+        Objects.requireNonNull(type, "订单类型不能为空");
+        Objects.requireNonNull(timeInForce, "有效期类型不能为空");
+        Objects.requireNonNull(createdAt, "创建时间不能为空");
+        if (type == OrderType.LIMIT) {
+            requirePositive(quantity, "订单数量");
+            requirePositive(price, "限价单价格");
+            if (quoteAmount != null) {
                 throw new IllegalArgumentException("限价单计价资产预算必须为空");
             }
-        } else if (builder.price != null) {
+        } else if (price != null) {
             throw new IllegalArgumentException("市价单价格必须为空");
-        } else if (builder.side == OrderSide.BUY) {
-            if (builder.quantity == null || builder.quantity.signum() != 0) {
+        } else if (side == OrderSide.BUY) {
+            if (quantity == null || quantity.signum() != 0) {
                 throw new IllegalArgumentException("市价买单数量必须为零");
             }
-            requirePositive(builder.quoteAmount, "市价买单计价资产预算");
+            requirePositive(quoteAmount, "市价买单计价资产预算");
         } else {
-            requirePositive(builder.quantity, "市价卖单数量");
-            if (builder.quoteAmount != null) {
+            requirePositive(quantity, "市价卖单数量");
+            if (quoteAmount != null) {
                 throw new IllegalArgumentException("市价卖单计价资产预算必须为空");
             }
         }
@@ -256,85 +272,4 @@ public final class MatchOrder {
         return value;
     }
 
-    /** 用于构造不可变订单属性的构造器。 */
-    public static final class Builder {
-
-        private long orderId;
-        private long userId;
-        private String symbol;
-        private OrderSide side;
-        private OrderType type;
-        private BigDecimal price;
-        private BigDecimal quantity;
-        private BigDecimal quoteAmount;
-        private TimeInForce timeInForce;
-        private Instant createdAt;
-        private long sequence;
-
-        public Builder orderId(long orderId) {
-            this.orderId = orderId;
-            return this;
-        }
-
-        public Builder userId(long userId) {
-            this.userId = userId;
-            return this;
-        }
-
-        public Builder symbol(String symbol) {
-            this.symbol = symbol;
-            return this;
-        }
-
-        public Builder side(OrderSide side) {
-            this.side = side;
-            return this;
-        }
-
-        public Builder type(OrderType type) {
-            this.type = type;
-            return this;
-        }
-
-        public Builder price(BigDecimal price) {
-            this.price = price;
-            return this;
-        }
-
-        public Builder quantity(BigDecimal quantity) {
-            this.quantity = quantity;
-            return this;
-        }
-
-        /**
-         * 设置市价买单可使用的计价资产预算。
-         *
-         * @param quoteAmount 计价资产预算
-         * @return 当前构造器
-         */
-        public Builder quoteAmount(BigDecimal quoteAmount) {
-            this.quoteAmount = quoteAmount;
-            return this;
-        }
-
-        public Builder timeInForce(TimeInForce timeInForce) {
-            this.timeInForce = timeInForce;
-            return this;
-        }
-
-        public Builder createdAt(Instant createdAt) {
-            this.createdAt = createdAt;
-            return this;
-        }
-
-        public Builder sequence(long sequence) {
-            this.sequence = sequence;
-            return this;
-        }
-
-        /** 校验并创建订单。 */
-        public MatchOrder build() {
-            return new MatchOrder(this);
-        }
-    }
 }

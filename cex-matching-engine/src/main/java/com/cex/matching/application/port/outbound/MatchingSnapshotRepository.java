@@ -1,4 +1,4 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.port.outbound;
 
 import com.cex.matching.domain.model.OrderBookSnapshot;
 

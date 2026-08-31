@@ -1,6 +1,7 @@
 package com.cex.matching.domain.model;
 
 import com.cex.matching.domain.enums.OrderEventType;
+import lombok.Builder;
 
 import java.time.Instant;
 import java.math.BigDecimal;
@@ -19,22 +20,33 @@ public final class OrderEvent {
     private final BigDecimal filledQuantity;
     private final BigDecimal remainingQuantity;
 
-    private OrderEvent(Builder builder) {
-        validateBuilder(builder);
-        this.eventId = builder.eventId;
-        this.sequence = builder.sequence;
-        this.orderId = builder.orderId;
-        this.symbol = builder.symbol;
-        this.timestamp = builder.timestamp;
-        this.type = builder.type;
-        this.tradeId = builder.tradeId;
-        this.filledQuantity = builder.filledQuantity;
-        this.remainingQuantity = builder.remainingQuantity;
-    }
-
-    /** 创建事件构造器，避免多参数构造函数。 */
-    public static Builder builder() {
-        return new Builder();
+    /**
+     * 创建不可变的订单结果事件；由 Lombok 生成的 Builder 调用。
+     *
+     * @param eventId 事件编号
+     * @param sequence 撮合序号
+     * @param orderId 订单编号
+     * @param symbol 交易对
+     * @param timestamp 事件时间
+     * @param type 事件类型
+     * @param tradeId 成交编号
+     * @param filledQuantity 累计成交数量
+     * @param remainingQuantity 剩余数量
+     */
+    @Builder
+    private OrderEvent(String eventId, long sequence, long orderId, String symbol, Instant timestamp,
+                       OrderEventType type, String tradeId, BigDecimal filledQuantity,
+                       BigDecimal remainingQuantity) {
+        validate(eventId, sequence, orderId, symbol, timestamp, type);
+        this.eventId = eventId;
+        this.sequence = sequence;
+        this.orderId = orderId;
+        this.symbol = symbol;
+        this.timestamp = timestamp;
+        this.type = type;
+        this.tradeId = tradeId;
+        this.filledQuantity = filledQuantity;
+        this.remainingQuantity = remainingQuantity;
     }
 
     public String getEventId() {
@@ -67,71 +79,15 @@ public final class OrderEvent {
     public BigDecimal getFilledQuantity() { return filledQuantity; }
     public BigDecimal getRemainingQuantity() { return remainingQuantity; }
 
-    private static void validateBuilder(Builder builder) {
-        if (builder.eventId == null || builder.eventId.isBlank()
-                || builder.sequence < 0 || builder.orderId <= 0) {
+    private static void validate(String eventId, long sequence, long orderId, String symbol, Instant timestamp,
+                                 OrderEventType type) {
+        if (eventId == null || eventId.isBlank() || sequence < 0 || orderId <= 0) {
             throw new IllegalArgumentException("事件标识和序号必须有效");
         }
-        if (builder.symbol == null || builder.symbol.isBlank()) {
+        if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("交易对不能为空");
         }
-        Objects.requireNonNull(builder.timestamp, "事件时间不能为空");
-        Objects.requireNonNull(builder.type, "事件类型不能为空");
-    }
-
-    /** 用于构造领域事件的构造器。 */
-    public static final class Builder {
-
-        private String eventId;
-        private long sequence;
-        private long orderId;
-        private String symbol;
-        private Instant timestamp;
-        private OrderEventType type;
-        private String tradeId;
-        private BigDecimal filledQuantity;
-        private BigDecimal remainingQuantity;
-
-        public Builder eventId(String eventId) {
-            this.eventId = eventId;
-            return this;
-        }
-
-        public Builder sequence(long sequence) {
-            this.sequence = sequence;
-            return this;
-        }
-
-        public Builder orderId(long orderId) {
-            this.orderId = orderId;
-            return this;
-        }
-
-        public Builder symbol(String symbol) {
-            this.symbol = symbol;
-            return this;
-        }
-
-        public Builder timestamp(Instant timestamp) {
-            this.timestamp = timestamp;
-            return this;
-        }
-
-        public Builder type(OrderEventType type) {
-            this.type = type;
-            return this;
-        }
-
-        public Builder tradeId(String tradeId) {
-            this.tradeId = tradeId;
-            return this;
-        }
-        public Builder filledQuantity(BigDecimal filledQuantity) { this.filledQuantity = filledQuantity; return this; }
-        public Builder remainingQuantity(BigDecimal remainingQuantity) { this.remainingQuantity = remainingQuantity; return this; }
-
-        /** 校验并创建事件。 */
-        public OrderEvent build() {
-            return new OrderEvent(this);
-        }
+        Objects.requireNonNull(timestamp, "事件时间不能为空");
+        Objects.requireNonNull(type, "事件类型不能为空");
     }
 }

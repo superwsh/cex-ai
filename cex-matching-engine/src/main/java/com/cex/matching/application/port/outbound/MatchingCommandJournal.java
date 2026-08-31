@@ -1,6 +1,7 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.port.outbound;
 
 import com.cex.common.kafka.event.OrderEvent;
+import com.cex.matching.application.recovery.model.RecordedMatchingCommand;
 
 import java.util.List;
 import java.util.Set;

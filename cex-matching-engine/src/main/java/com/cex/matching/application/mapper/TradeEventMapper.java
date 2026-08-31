@@ -1,4 +1,4 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.mapper;
 
 import com.cex.common.kafka.event.TradeEvent;
 import com.cex.matching.domain.enums.OrderSide;

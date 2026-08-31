@@ -1,8 +1,10 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.command;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.domain.enums.OrderStatus;
 import com.cex.matching.domain.model.MatchResult;
+import com.cex.matching.application.observability.MatchingMetrics;
+import com.cex.matching.application.recovery.support.InMemoryMatchingCommandJournal;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import org.junit.jupiter.api.Test;
 

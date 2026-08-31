@@ -1,8 +1,10 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.command;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.common.kafka.event.TradeEvent;
 import com.cex.matching.core.MatchingEngine;
+import com.cex.matching.application.mapper.OrderResultEventMapper;
+import com.cex.matching.application.mapper.TradeEventMapper;
 import com.cex.matching.domain.model.MatchResult;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;

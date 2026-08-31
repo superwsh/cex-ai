@@ -1,4 +1,4 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.recovery;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.ApplicationArguments;

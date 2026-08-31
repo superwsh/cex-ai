@@ -1,6 +1,6 @@
 package com.cex.matching.infrastructure.snapshot;
 
-import com.cex.matching.application.service.MatchingSnapshotRepository;
+import com.cex.matching.application.port.outbound.MatchingSnapshotRepository;
 import com.cex.matching.domain.model.OrderBookSnapshot;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;

@@ -3,7 +3,7 @@ package com.cex.matching.infrastructure.kafka;
 import com.cex.common.kafka.TopicConstants;
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.core.MatchingEngine;
-import com.cex.matching.application.service.PeriodicMatchingSnapshotService;
+import com.cex.matching.application.recovery.PeriodicMatchingSnapshotService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;

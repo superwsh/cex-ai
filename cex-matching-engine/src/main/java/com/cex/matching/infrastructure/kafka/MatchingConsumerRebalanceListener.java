@@ -1,6 +1,6 @@
 package com.cex.matching.infrastructure.kafka;
 
-import com.cex.matching.application.service.MatchingSnapshotService;
+import com.cex.matching.application.recovery.MatchingSnapshotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.consumer.ConsumerRebalanceListener;

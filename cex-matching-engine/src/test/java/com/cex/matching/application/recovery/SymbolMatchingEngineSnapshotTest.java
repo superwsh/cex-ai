@@ -1,8 +1,13 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.recovery;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.domain.model.MatchResult;
 import com.cex.matching.domain.model.OrderBookSnapshot;
+import com.cex.matching.application.command.MatchingEngineRegistry;
+import com.cex.matching.application.command.SymbolMatchingEngine;
+import com.cex.matching.application.mapper.OrderEventMapper;
+import com.cex.matching.application.port.outbound.MatchingSnapshotRepository;
+import com.cex.matching.application.recovery.support.InMemoryMatchingCommandJournal;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

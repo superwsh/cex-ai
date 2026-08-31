@@ -1,6 +1,7 @@
 package com.cex.matching.domain.model;
 
 import com.cex.matching.domain.enums.OrderSide;
+import lombok.Builder;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -20,23 +21,33 @@ public final class Trade {
     private final Instant timestamp;
     private final long sequence;
 
-    private Trade(Builder builder) {
-        validateBuilder(builder);
-        this.tradeId = builder.tradeId;
-        this.symbol = builder.symbol;
-        this.makerOrderId = builder.makerOrderId;
-        this.takerOrderId = builder.takerOrderId;
-        this.makerSide = builder.makerSide;
-        this.price = builder.price;
-        this.quantity = builder.quantity;
-        this.quoteAmount = builder.price.multiply(builder.quantity);
-        this.timestamp = builder.timestamp;
-        this.sequence = builder.sequence;
-    }
-
-    /** 创建成交构造器，避免多参数构造函数。 */
-    public static Builder builder() {
-        return new Builder();
+    /**
+     * 创建成交记录并计算成交额；由 Lombok 生成的 Builder 调用。
+     *
+     * @param tradeId 成交编号
+     * @param symbol 交易对
+     * @param makerOrderId 挂单编号
+     * @param takerOrderId 吃单编号
+     * @param makerSide 挂单方向
+     * @param price 成交价格
+     * @param quantity 成交数量
+     * @param timestamp 成交时间
+     * @param sequence 撮合序号
+     */
+    @Builder
+    private Trade(String tradeId, String symbol, long makerOrderId, long takerOrderId, OrderSide makerSide,
+                  BigDecimal price, BigDecimal quantity, Instant timestamp, long sequence) {
+        validate(tradeId, symbol, makerOrderId, takerOrderId, makerSide, price, quantity, timestamp, sequence);
+        this.tradeId = tradeId;
+        this.symbol = symbol;
+        this.makerOrderId = makerOrderId;
+        this.takerOrderId = takerOrderId;
+        this.makerSide = makerSide;
+        this.price = price;
+        this.quantity = quantity;
+        this.quoteAmount = price.multiply(quantity);
+        this.timestamp = timestamp;
+        this.sequence = sequence;
     }
 
     public String getTradeId() {
@@ -84,18 +95,20 @@ public final class Trade {
         return sequence;
     }
 
-    private static void validateBuilder(Builder builder) {
-        if (builder.tradeId == null || builder.tradeId.isBlank() || builder.makerOrderId <= 0
-                || builder.takerOrderId <= 0 || builder.sequence < 0) {
+    private static void validate(String tradeId, String symbol, long makerOrderId, long takerOrderId,
+                                 OrderSide makerSide, BigDecimal price, BigDecimal quantity,
+                                 Instant timestamp, long sequence) {
+        if (tradeId == null || tradeId.isBlank() || makerOrderId <= 0
+                || takerOrderId <= 0 || sequence < 0) {
             throw new IllegalArgumentException("成交标识和序号必须有效");
         }
-        if (builder.symbol == null || builder.symbol.isBlank()) {
+        if (symbol == null || symbol.isBlank()) {
             throw new IllegalArgumentException("交易对不能为空");
         }
-        requirePositive(builder.price, "成交价格");
-        requirePositive(builder.quantity, "成交数量");
-        Objects.requireNonNull(builder.makerSide, "挂单方买卖方向不能为空");
-        Objects.requireNonNull(builder.timestamp, "成交时间不能为空");
+        requirePositive(price, "成交价格");
+        requirePositive(quantity, "成交数量");
+        Objects.requireNonNull(makerSide, "挂单方买卖方向不能为空");
+        Objects.requireNonNull(timestamp, "成交时间不能为空");
     }
 
     private static void requirePositive(BigDecimal value, String fieldName) {
@@ -104,73 +117,4 @@ public final class Trade {
         }
     }
 
-    /** 用于构造成交记录的构造器。 */
-    public static final class Builder {
-
-        private String tradeId;
-        private String symbol;
-        private long makerOrderId;
-        private long takerOrderId;
-        private OrderSide makerSide;
-        private BigDecimal price;
-        private BigDecimal quantity;
-        private Instant timestamp;
-        private long sequence;
-
-        public Builder tradeId(String tradeId) {
-            this.tradeId = tradeId;
-            return this;
-        }
-
-        public Builder symbol(String symbol) {
-            this.symbol = symbol;
-            return this;
-        }
-
-        public Builder makerOrderId(long makerOrderId) {
-            this.makerOrderId = makerOrderId;
-            return this;
-        }
-
-        public Builder takerOrderId(long takerOrderId) {
-            this.takerOrderId = takerOrderId;
-            return this;
-        }
-
-        /**
-         * 设置挂单方买卖方向。
-         *
-         * @param makerSide 挂单方买卖方向
-         * @return 当前构造器
-         */
-        public Builder makerSide(OrderSide makerSide) {
-            this.makerSide = makerSide;
-            return this;
-        }
-
-        public Builder price(BigDecimal price) {
-            this.price = price;
-            return this;
-        }
-
-        public Builder quantity(BigDecimal quantity) {
-            this.quantity = quantity;
-            return this;
-        }
-
-        public Builder timestamp(Instant timestamp) {
-            this.timestamp = timestamp;
-            return this;
-        }
-
-        public Builder sequence(long sequence) {
-            this.sequence = sequence;
-            return this;
-        }
-
-        /** 校验并创建成交记录。 */
-        public Trade build() {
-            return new Trade(this);
-        }
-    }
 }

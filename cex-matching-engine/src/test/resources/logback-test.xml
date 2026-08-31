@@ -1,4 +1,4 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <configuration>
-    <logger name="com.cex.matching.application.service.MatchingEngineRegistry" level="WARN"/>
+    <logger name="com.cex.matching.application.command.MatchingEngineRegistry" level="WARN"/>
 </configuration>

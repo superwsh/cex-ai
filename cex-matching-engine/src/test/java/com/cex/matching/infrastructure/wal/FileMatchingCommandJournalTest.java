@@ -1,7 +1,7 @@
 package com.cex.matching.infrastructure.wal;
 
 import com.cex.common.kafka.event.OrderEvent;
-import com.cex.matching.application.service.RecordedMatchingCommand;
+import com.cex.matching.application.recovery.model.RecordedMatchingCommand;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;

@@ -1,8 +1,8 @@
 package com.cex.matching.infrastructure.wal;
 
 import com.cex.common.kafka.event.OrderEvent;
-import com.cex.matching.application.service.MatchingCommandJournal;
-import com.cex.matching.application.service.RecordedMatchingCommand;
+import com.cex.matching.application.port.outbound.MatchingCommandJournal;
+import com.cex.matching.application.recovery.model.RecordedMatchingCommand;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;

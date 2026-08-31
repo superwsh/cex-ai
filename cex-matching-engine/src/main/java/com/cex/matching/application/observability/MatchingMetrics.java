@@ -1,4 +1,4 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.observability;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.domain.enums.OrderStatus;

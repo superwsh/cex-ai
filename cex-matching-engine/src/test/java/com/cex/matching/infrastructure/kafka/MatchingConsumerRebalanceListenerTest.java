@@ -1,6 +1,6 @@
 package com.cex.matching.infrastructure.kafka;
 
-import com.cex.matching.application.service.MatchingSnapshotService;
+import com.cex.matching.application.recovery.MatchingSnapshotService;
 import org.apache.kafka.common.TopicPartition;
 import org.junit.jupiter.api.Test;
 

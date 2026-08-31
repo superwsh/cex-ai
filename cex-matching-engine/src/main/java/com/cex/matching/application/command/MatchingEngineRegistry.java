@@ -1,10 +1,15 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.command;
 
 import com.cex.common.kafka.event.OrderEvent;
 import com.cex.matching.domain.model.MatchResult;
 import com.cex.matching.domain.model.OrderBookSnapshot;
 import com.cex.matching.domain.model.ProcessedMatchResultSnapshot;
 import com.cex.matching.domain.sequence.SequenceGapException;
+import com.cex.matching.application.mapper.OrderEventMapper;
+import com.cex.matching.application.observability.MatchingMetrics;
+import com.cex.matching.application.port.outbound.MatchingCommandJournal;
+import com.cex.matching.application.recovery.model.RecordedMatchingCommand;
+import com.cex.matching.application.recovery.support.InMemoryMatchingCommandJournal;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.slf4j.Logger;

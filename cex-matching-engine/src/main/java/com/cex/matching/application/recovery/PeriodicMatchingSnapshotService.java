@@ -1,4 +1,4 @@
-package com.cex.matching.application.service;
+package com.cex.matching.application.recovery;
 
 import com.cex.common.kafka.event.OrderEvent;
 import lombok.RequiredArgsConstructor;
