@@ -1,4 +1,4 @@
-package com.cex.matching.infrastructure.kafka;
+package com.cex.matching.infrastructure.kafka.config;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;

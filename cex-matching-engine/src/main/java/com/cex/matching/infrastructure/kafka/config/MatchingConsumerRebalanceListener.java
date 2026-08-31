@@ -1,4 +1,4 @@
-package com.cex.matching.infrastructure.kafka;
+package com.cex.matching.infrastructure.kafka.config;
 
 import com.cex.matching.application.recovery.MatchingSnapshotService;
 import lombok.RequiredArgsConstructor;
