@@ -14,6 +14,9 @@ public final class TopicConstants {
     /** 撮合成交事件，Matching Engine -> Clearing / Market / Notification */
     public static final String TOPIC_TRADE_EVENT = "cex.trade.event";
 
+    /** 撮合盘口聚合档位变更事件，Matching Engine -> Market Service。 */
+    public static final String TOPIC_ORDER_BOOK_DELTA_EVENT = "cex.matching.book-delta";
+
     /** 成交事件重试主题。 */
     public static final String TOPIC_TRADE_EVENT_RETRY = "cex.trade.event.retry";
 

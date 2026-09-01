@@ -18,6 +18,7 @@ public final class TradeEventMapper {
     public TradeEvent toTradeEvent(Trade trade) {
         boolean makerIsBuyer = trade.getMakerSide() == OrderSide.BUY;
         return TradeEvent.builder()
+                .eventVersion(1)
                 .eventId("trade-" + trade.getTradeId())
                 .tradeId(trade.getTradeId())
                 .sequence(trade.getSequence())
@@ -31,11 +32,14 @@ public final class TradeEventMapper {
                 .price(trade.getPrice())
                 .quantity(trade.getQuantity())
                 .amount(trade.getQuoteAmount())
+                .quoteQuantity(trade.getQuoteAmount())
+                .takerSide(makerIsBuyer ? TradeEvent.TakerSide.SELL : TradeEvent.TakerSide.BUY)
                 .buyerFee(BigDecimal.ZERO)
                 .buyerFeeAsset(trade.getBaseAsset())
                 .sellerFee(BigDecimal.ZERO)
                 .sellerFeeAsset(trade.getQuoteAsset())
                 .timestamp(trade.getTimestamp().toEpochMilli())
+                .createdAt(trade.getTimestamp().toEpochMilli())
                 .build();
     }
 }

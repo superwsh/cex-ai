@@ -12,6 +12,11 @@ spring:
       config:
         namespace: ${NACOS_NAMESPACE:cex-dev}
         # import: optional:nacos:cex-market-service.yml?group=DEFAULT_GROUP
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://${MYSQL_ADDR:127.0.0.1:3306}/cex_market?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USER:root}
+    password: ${MYSQL_PASSWORD:root}
   data:
     redis:
       # 行情 tick、K 线、深度快照缓存
@@ -24,18 +29,48 @@ spring:
     consumer:
       group-id: cex-market
       auto-offset-reset: earliest
+      enable-auto-commit: false
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JsonDeserializer
       properties:
         spring.json.trusted.packages: "com.cex.*"
+    listener:
+      ack-mode: record
 
 # Netty WebSocket 行情推送端口
 netty:
   ws:
     port: 9001
+    heartbeat-timeout-seconds: ${MARKET_WS_HEARTBEAT_TIMEOUT_SECONDS:90}
+    broadcast:
+      flush-interval-ms: ${MARKET_WS_FLUSH_INTERVAL_MS:50}
+      trade-batch-size: ${MARKET_WS_TRADE_BATCH_SIZE:100}
+      max-pending-trades: ${MARKET_WS_MAX_PENDING_TRADES:10000}
+      max-consecutive-unwritable: ${MARKET_WS_MAX_CONSECUTIVE_UNWRITABLE:3}
 
 management:
   endpoints:
     web:
       exposure:
         include: health,info,prometheus
+
+cex:
+  market:
+    ticker-refresh-interval-ms: ${MARKET_TICKER_REFRESH_INTERVAL_MS:60000}
+    recovery:
+      replay-timeout-ms: ${MARKET_RECOVERY_REPLAY_TIMEOUT_MS:10000}
+    metrics:
+      kafka-lag-enabled: ${MARKET_KAFKA_LAG_ENABLED:true}
+      kafka-lag-interval-ms: ${MARKET_KAFKA_LAG_INTERVAL_MS:30000}
+      kafka-lag-timeout-ms: ${MARKET_KAFKA_LAG_TIMEOUT_MS:5000}
+    rate-limit:
+      requests-per-window: ${MARKET_RATE_LIMIT_REQUESTS:120}
+      window-seconds: ${MARKET_RATE_LIMIT_WINDOW_SECONDS:60}
+
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true
+  global-config:
+    banner: false
+    db-config:
+      id-type: assign_id

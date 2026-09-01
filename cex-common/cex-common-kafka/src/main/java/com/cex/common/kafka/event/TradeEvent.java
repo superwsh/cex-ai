@@ -19,6 +19,12 @@ public class TradeEvent implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    /**
+     * 事件协议版本。缺失时按版本 1 处理，以兼容在此字段发布前生成的消息。
+     */
+    @Builder.Default
+    private Integer eventVersion = 1;
+
     /** 成交ID（撮合引擎生成，单调递增） */
     private String tradeId;
 
@@ -58,6 +64,14 @@ public class TradeEvent implements Serializable {
     /** 成交金额 = price * quantity */
     private BigDecimal amount;
 
+    /**
+     * 行情使用的计价成交量，语义与 amount 一致。保留 amount 以兼容清算等既有消费者。
+     */
+    private BigDecimal quoteQuantity;
+
+    /** 主动方方向，供行情逐笔成交流直接使用。 */
+    private TakerSide takerSide;
+
     /** 撮合时已确定的买方手续费；没有手续费时为零。 */
     private BigDecimal buyerFee;
 
@@ -72,4 +86,12 @@ public class TradeEvent implements Serializable {
 
     /** 成交时间（毫秒时间戳） */
     private Long timestamp;
+
+    /** 事件创建时间（毫秒时间戳）。 */
+    private Long createdAt;
+
+    public enum TakerSide {
+        BUY,
+        SELL
+    }
 }
