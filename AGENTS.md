@@ -1,392 +1,271 @@
-# Java Backend / CEX 项目统一开发规范
+# CEX 全局 Coding Agent 规则
 
-## 1. 总体原则
+## 1. 项目性质
 
-所有代码必须遵循以下原则：
+本项目是中心化交易所 CEX 后端系统。
 
-* 优先保证正确性，其次考虑性能，最后考虑代码简洁。
-* 不允许为了“少写代码”牺牲可读性、可维护性和业务正确性。
-* 所有核心业务逻辑必须显式表达，不允许依赖隐式副作用。
-* 所有涉及资金、订单、交易、清算的数据变更必须考虑：
+这是金融交易系统。
 
-    * 原子性
-    * 幂等性
-    * 一致性
-    * 可追溯性
-    * 可恢复性
-* 不允许在没有充分理由的情况下引入新的框架、中间件或依赖。
-* 修改现有代码时，优先遵循当前项目已有架构和编码风格，不随意重构无关代码。
+任何代码修改都必须优先保证：
 
----
+1. 正确性
+2. 资金安全
+3. 数据一致性
+4. 幂等性
+5. 顺序性
+6. 确定性
+7. 可恢复性
+8. 可审计性
+9. 性能
+10. 代码可维护性
 
-# 2. 技术栈规范
-
-默认技术栈：
-
-* Java 17
-* Spring Boot 3.x
-* Spring MVC
-* Spring Validation
-* MyBatis / MyBatis-Plus
-* MySQL 8.x
-* Redis
-* Kafka
-* Maven
-* JUnit 5
-* Mockito
-
-除非项目已有明确技术选型，否则不要随意替换技术栈。
-
-例如：
-
-* 不要无理由把 MyBatis 改成 JPA。
-* 不要无理由引入 Reactor。
-* 不要无理由使用 Redis Stream 替代 Kafka。
-* 不要无理由新增 MQ、数据库、中间件。
+不得为了快速完成任务而降低资金安全、一致性或可恢复性。
 
 ---
 
-# 3. 项目分层规范
+## 2. 系统模块
 
-推荐模块结构：
+当前核心模块：
+
+- `order-service`
+- `account-service`
+- `matching-engine`
+- `clearing-service`
+- `market-data`
+
+后续可能包含：
+
+- `gateway`
+- `reconciliation-service`
+- `risk-service`
+- `wallet-service`
+
+必须严格遵守模块边界。
+
+除非任务明确要求，不允许：
+
+- 将业务职责随意移动到其他模块
+- 新增不必要的跨服务调用
+- 将异步架构随意改成同步架构
+- 将领域逻辑放入 Controller
+- 将核心业务逻辑放入 Kafka Consumer
+- 为了省事直接绕过既有领域模型
+
+---
+
+## 3. 核心业务链路
+
+典型订单链路：
 
 ```text
-controller
-application
-domain
-infrastructure
-repository
-mapper
-entity
-dto
-vo
-config
-common
-exception
+Client
+  ↓
+Gateway
+  ↓
+Order Service
+  ↓
+Account Service / Freeze
+  ↓
+Outbox
+  ↓
+Kafka
+  ↓
+Matching Engine
+  ↓
+Trade Event
+  ↓
+Kafka
+  ↓
+Clearing Service
+  ↓
+Account Settlement
+  ↓
+Market Data
 ```
 
-职责要求：
+修改任意核心链路前，必须分析上下游影响。
 
-## controller
+---
 
-只负责：
+## 4. Agent 开发流程
 
-* 接收请求
-* 参数校验
-* 身份信息获取
-* 调用 application/service
-* 返回结果
+收到开发任务后，不要立即修改代码。
+
+必须按顺序执行：
+
+### Step 1：理解需求
+
+明确：
+
+- 解决什么问题
+- 涉及什么模块
+- 哪些业务状态会改变
+- 是否涉及资金
+- 是否涉及订单
+- 是否涉及成交
+- 是否涉及 Kafka
+- 是否涉及数据库
+- 是否涉及 Redis
+
+### Step 2：读取规则
+
+依次阅读：
+
+1. 当前模块 `AGENTS.md`
+2. 根目录 `AGENTS.md`
+3. 相关架构文档
+4. 相关 ADR
+
+模块级规则优先于全局通用规则。
+
+### Step 3：搜索代码
+
+必须先搜索已有：
+
+- Service
+- Domain Service
+- Entity
+- Aggregate
+- Repository
+- Mapper
+- Consumer
+- Producer
+- Event
+- Command
+- DTO
+- Exception
+- Utility
+- Test
+
+优先复用已有设计，不重复造轮子。
+
+### Step 4：分析业务链路
+
+至少确定：
+
+```text
+入口
+↓
+校验
+↓
+领域逻辑
+↓
+事务边界
+↓
+数据库变化
+↓
+事件
+↓
+Consumer
+↓
+下游影响
+```
+
+### Step 5：最小正确修改
+
+遵循：
+
+> Minimum Correct Change
+
+只修改完成当前任务所必要的代码。
 
 禁止：
 
-* 编写核心业务逻辑
-* 直接操作数据库
-* 直接操作 Mapper
+- 无关重构
+- 无关改名
+- 全项目格式化
+- 擅自升级框架
+- 擅自修改公共 API
+- 引入没有必要的新依赖
 
----
+### Step 6：验证
 
-## application / service
-
-负责：
-
-* 业务流程编排
-* 事务边界
-* 多领域对象协调
-* 调用 domain / repository
-
-核心业务流程必须放在此层或 domain 层。
-
----
-
-## domain
-
-负责核心业务规则，例如：
-
-* 订单状态转换
-* 撮合规则
-* 成交逻辑
-* 余额计算
-* 手续费计算
-* 风控规则
-
-核心领域规则不能散落在 Controller、Mapper 中。
-
----
-
-## repository
-
-负责数据访问抽象。
-
-例如：
-
-```java
-public interface OrderRepository {
-
-    Order findById(Long orderId);
-
-    void save(Order order);
-
-    boolean updateStatus(
-        Long orderId,
-        OrderStatus from,
-        OrderStatus to
-    );
-}
-```
-
----
-
-## mapper
-
-只负责 SQL。
-
-禁止在 Mapper 中包含业务决策。
-
----
-
-# 4. 命名规范
-
-类名使用大驼峰：
+完成代码后必须：
 
 ```text
-OrderService
-OrderController
-MatchingEngine
-SettlementService
+Compile
+↓
+Unit Test
+↓
+Integration Test
+↓
+Static Check
+↓
+Git Diff Review
 ```
 
-方法名使用小驼峰：
+测试失败时：
 
 ```text
-createOrder
-cancelOrder
-matchOrder
-freezeBalance
+分析根因
+↓
+修复
+↓
+重新测试
 ```
 
-布尔变量必须体现语义：
-
-推荐：
-
-```java
-isFinished
-hasEnoughBalance
-canCancel
-```
-
-不推荐：
-
-```java
-flag
-statusFlag
-result
-```
-
-集合名称必须使用复数：
-
-```java
-orders
-trades
-users
-```
-
-对象需要 Builder 时，优先直接在构造器或类上使用 Lombok `@Builder`。
-
-禁止无业务必要地手写 Builder 内部类。只有生成的 Builder 无法表达必要的构建逻辑时才允许自定义，并必须在代码注释中说明原因。
+测试失败时不得声明任务完成。
 
 ---
 
-# 5. 方法设计规范
+## 5. Java 通用规范
 
-一个方法只负责一个核心职责。
+以项目实际 Java / Spring Boot 版本为准。
 
-原则上：
+优先：
 
-* 方法不超过 50 行。
-* 参数尽量不超过 5 个。
-* 超过 5 个参数优先封装对象。
-* 避免超过 3 层嵌套。
-* 每个方法要提供中文注释，说明其功能以及参数。
-* 方法中的实现代码根据复杂度适当添加注释，注意不要过度添加注释。
+- Constructor Injection
+- immutable object
+- 明确的领域模型
+- enum 表达有限状态
+- 有业务语义的异常类型
 
-推荐：
+禁止：
 
-```java
-public void createOrder(CreateOrderCommand command) {
-    validateOrder(command);
-    freezeBalance(command);
-    saveOrder(command);
-    publishOrderCreatedEvent(command);
-}
-```
-
-而不是把所有逻辑写在一个 300 行的方法里。
+- Field Injection
+- 空 catch
+- `return null` 隐藏错误
+- 魔法数字
+- 复制粘贴已有逻辑
 
 ---
 
-# 6. 参数校验规范
+## 6. 金额与数量类型
 
-Controller 使用 Bean Validation：
-
-```java
-@NotNull
-@Positive
-private BigDecimal price;
-```
-
-业务级校验必须在 Service / Domain 中再次判断。
-
-例如：
-
-* 交易对是否存在
-* 交易对是否可交易
-* 用户状态是否正常
-* 余额是否充足
-* 最小下单金额
-* 最大下单数量
-* Price Tick
-* Quantity Step
-
-不允许只依赖前端校验。
-
----
-
-# 7. BigDecimal 规范
-
-资金、价格、数量禁止使用：
+下列字段禁止使用：
 
 ```java
 double
 float
 ```
 
-必须使用：
+包括：
+
+- price
+- quantity
+- amount
+- balance
+- fee
+
+默认使用：
 
 ```java
 BigDecimal
 ```
 
-BigDecimal 比较必须使用：
+如果 Matching Engine 出于性能原因使用：
 
-```java
-a.compareTo(b)
+```text
+long + scale
 ```
 
-禁止：
+必须属于已经确认的架构方案。
 
-```java
-a.equals(b)
-```
-
-金额计算必须明确 roundingMode。
-
-例如：
-
-```java
-amount.setScale(8, RoundingMode.DOWN);
-```
-
-禁止使用未指定精度的除法。
+Agent 不得自行把 `BigDecimal` 改成 `double`。
 
 ---
 
-# 8. 数据库规范
-
-表名：
-
-```text
-order
-trade
-account
-account_flow
-```
-
-推荐实际业务使用带业务域前缀的名称，例如：
-
-```text
-cex_order
-cex_trade
-cex_account
-cex_account_flow
-```
-
-字段使用 snake_case：
-
-```text
-user_id
-order_id
-created_at
-updated_at
-```
-
-所有业务表原则上必须包含：
-
-```text
-id
-created_at
-updated_at
-```
-
-关键业务记录根据需要增加：
-
-```text
-version
-status
-```
-
----
-
-# 9. 数据库主键规范
-
-内部数据库主键建议使用：
-
-```text
-BIGINT
-```
-
-业务 ID 与数据库主键可以分离。
-
-例如：
-
-```text
-id
-order_id
-trade_id
-```
-
-order_id / trade_id 应具备全局唯一性。
-
----
-
-# 10. 索引规范
-
-所有高频查询必须有索引。
-
-例如订单查询：
-
-```text
-(user_id, symbol, created_at)
-```
-
-幂等数据必须通过数据库唯一索引兜底。
-
-例如：
-
-```text
-UNIQUE(order_id)
-```
-
-资金流水：
-
-```text
-UNIQUE(trade_id, user_id, biz_type)
-```
-
-禁止只依赖 Redis 实现最终幂等。
-
----
-
-# 11. SQL 规范
+## 7. 数据库规则
 
 禁止：
 
@@ -394,856 +273,327 @@ UNIQUE(trade_id, user_id, biz_type)
 SELECT *
 ```
 
-必须明确字段。
+关键资金修改必须考虑并发。
 
-余额更新必须通过 SQL 原子判断。
-
-例如：
+例如余额扣减应优先使用：
 
 ```sql
-UPDATE account
-SET available = available - #{amount},
-    frozen = frozen + #{amount}
-WHERE user_id = #{userId}
-  AND asset = #{asset}
-  AND available >= #{amount};
+UPDATE account_balance
+SET available = available - :amount
+WHERE user_id = :userId
+  AND asset = :asset
+  AND available >= :amount;
 ```
 
-必须检查 affected rows。
-
-如果：
+必须检查：
 
 ```text
-affectedRows = 0
+affectedRows
 ```
 
-应认为余额不足或状态冲突。
+禁止采用存在竞争窗口的方式：
 
-禁止：
-
-1. select balance
-2. Java 判断
-3. update balance
-
-因为存在并发问题。
+```text
+SELECT balance
+↓
+Java 判断余额
+↓
+UPDATE balance
+```
 
 ---
 
-# 12. 事务规范
+## 8. 事务规则
 
-事务必须尽可能小。
+属于同一数据库且必须共同成功或失败的操作，应使用本地事务保证原子性。
 
-资金操作必须保证：
+例如：
 
 ```text
-余额修改
+修改余额
 +
 资金流水
 ```
 
-处于同一事务。
+禁止把以下慢操作随意放入数据库事务：
 
-例如：
-
-```text
-BEGIN
-
-UPDATE account
-
-INSERT account_flow
-
-COMMIT
-```
-
-禁止：
-
-```text
-更新余额成功
-↓
-事务提交
-↓
-再写流水
-```
-
-否则可能出现账实不一致。
+- HTTP RPC
+- Kafka 阻塞等待
+- 外部 API
+- 文件 IO
+- sleep
+- 长时间计算
 
 ---
 
-# 13. 订单规范
+## 9. 幂等规则
 
-订单必须有明确状态机。
+任何可能被重复执行的操作都必须评估幂等性：
 
-例如：
+- HTTP 请求
+- Kafka Consumer
+- RPC Retry
+- Scheduled Job
+- Compensation Job
 
-```text
-NEW
-↓
-PENDING_FREEZE
-↓
-OPEN
-↓
-PARTIALLY_FILLED
-↓
-FILLED
-```
-
-取消：
+常见幂等键：
 
 ```text
-OPEN
-↓
-CANCELING
-↓
-CANCELED
+Order:
+orderId
+
+Trade:
+tradeId
+
+Fund Flow:
+tradeId + userId + bizType
 ```
 
-异常：
+核心金融幂等优先依赖：
 
 ```text
-REJECTED
-```
-
-禁止任意状态直接修改。
-
-状态更新建议使用 CAS：
-
-```sql
-UPDATE cex_order
-SET status = 'CANCELED'
-WHERE order_id = ?
-AND status = 'OPEN';
-```
-
-必须检查 affected rows。
-
----
-
-# 14. Kafka 使用规范
-
-Kafka 用于：
-
-* Order Created
-* Order Cancel
-* Trade Created
-* Settlement
-* Market Data
-* Order Book Update
-
-Topic 命名：
-
-```text
-cex.order.created
-cex.order.cancel
-cex.trade.created
-cex.settlement
-cex.market.trade
-cex.market.depth
-```
-
-生产消息必须考虑：
-
-```text
-acks=all
-```
-
-消费者必须支持：
-
-```text
-At Least Once
+数据库唯一约束
 +
-业务幂等
+事务
 ```
 
-不要依赖 Kafka Exactly Once 解决所有业务一致性问题。
+Redis 可以作为性能优化，但不能默认作为唯一金融一致性保障。
 
 ---
 
-# 15. Kafka Key 规范
+## 10. Kafka 规则
 
-撮合消息：
+默认认为 Kafka：
 
 ```text
-key = symbol
+At-Least-Once Delivery
 ```
 
-例如：
+因此 Consumer 必须容忍重复消息。
+
+不得假设：
+
+> 一条 Kafka 消息永远只会消费一次。
+
+数据库状态与事件发布需要一致时，优先使用：
 
 ```text
-BTC-USDT
-ETH-USDT
+Transactional Outbox
 ```
 
-确保：
+禁止核心事务中简单执行：
 
 ```text
-同一个 symbol
-→ 同一个 partition
-→ 单线程顺序消费
-```
-
-保证订单进入撮合引擎的顺序。
-
----
-
-# 16. Kafka Consumer 规范
-
-Consumer 必须考虑：
-
-* 重复消费
-* 消费失败
-* Retry
-* Dead Letter Queue
-* 消费积压
-* Rebalance
-
-消费逻辑必须幂等。
-
-例如：
-
-```text
-收到 TradeCreated
+UPDATE DB
 ↓
-检查 trade_id 是否已处理
-↓
-已处理
-→ 直接 ACK
-
-未处理
-→ 执行业务
-→ 记录处理状态
-→ ACK
+producer.send()
 ```
+
+然后认为数据库与 Kafka 一定一致。
 
 ---
 
-# 17. Outbox 规范
+## 11. Kafka Event 基础结构
 
-数据库变更和 Kafka 事件需要一致时，优先使用 Transactional Outbox。
-
-事务：
-
-```text
-BEGIN
-
-INSERT order
-
-UPDATE account
-
-INSERT outbox_event
-
-COMMIT
-```
-
-异步任务读取：
-
-```text
-outbox_event
-↓
-Kafka
-```
-
-发送成功后：
-
-```text
-status = SENT
-```
-
-必须支持失败重试。
-
----
-
-# 18. 幂等规范
-
-所有跨服务写操作必须考虑幂等。
-
-常见 ID：
-
-```text
-request_id
-order_id
-trade_id
-event_id
-```
-
-数据库唯一索引作为最终防线。
-
-例如：
-
-```sql
-UNIQUE(event_id)
-```
-
-禁止只写：
-
-```java
-if (redis.exists(key)) {
-    return;
-}
-```
-
-然后认为已经完全解决幂等问题。
-
----
-
-# 19. 撮合引擎规范
-
-撮合采用：
-
-```text
-Price Priority
-+
-Time Priority
-```
-
-买单：
-
-```text
-价格从高到低
-```
-
-卖单：
-
-```text
-价格从低到高
-```
-
-同价格：
-
-```text
-FIFO
-```
-
-推荐：
-
-```text
-TreeMap<Price, PriceLevel>
-```
-
-PriceLevel：
-
-```text
-Deque<Order>
-```
-
-订单快速定位：
-
-```text
-HashMap<OrderId, OrderReference>
-```
-
----
-
-# 20. 撮合线程模型
-
-原则：
-
-```text
-一个 symbol
-=
-一个逻辑撮合线程
-```
-
-避免多个线程同时修改同一个 OrderBook。
-
-禁止为了“提高并发”给一个订单簿增加大量锁。
-
-优先通过：
-
-```text
-Symbol Partition
-```
-
-实现横向扩展。
-
----
-
-# 21. 撮合核心代码规范
-
-撮合核心路径禁止：
-
-* 调数据库
-* 调 Redis
-* RPC
-* HTTP
-* 写磁盘同步 IO
-
-撮合线程应主要操作：
-
-```text
-内存
-```
-
-结果通过 Event 输出。
-
----
-
-# 22. 撮合恢复规范
-
-撮合引擎必须支持：
-
-```text
-Snapshot
-+
-WAL / Event Log
-```
-
-启动：
-
-```text
-读取 Snapshot
-↓
-恢复 OrderBook
-↓
-获取 snapshotSequence
-↓
-重放 sequence > snapshotSequence 的事件
-```
-
-保证恢复一致性。
-
----
-
-# 23. 资金系统规范
-
-账户建议至少维护：
-
-```text
-available
-frozen
-```
-
-冻结：
-
-```text
-available -= amount
-frozen += amount
-```
-
-解冻：
-
-```text
-frozen -= amount
-available += amount
-```
-
-成交：
-
-```text
-frozen -= amount
-```
-
-每一次资金变更必须有流水。
-
----
-
-# 24. 资金流水规范
-
-资金流水必须包含：
-
-```text
-user_id
-asset
-biz_type
-biz_id
-amount
-before_available
-after_available
-before_frozen
-after_frozen
-created_at
-```
-
-必须能够根据流水进行：
-
-```text
-Audit
-Reconciliation
-Recovery
-```
-
----
-
-# 25. 异常处理规范
-
-统一业务异常：
-
-```java
-BizException
-```
-
-例如：
-
-```java
-throw new BizException(
-    ErrorCode.INSUFFICIENT_BALANCE
-);
-```
-
-禁止：
-
-```java
-throw new RuntimeException("余额不足");
-```
-
-禁止把 Java 堆栈直接返回客户端。
-
----
-
-# 26. API 返回规范
-
-统一：
+核心事件建议至少包含：
 
 ```json
 {
-  "code": "0",
-  "message": "success",
+  "eventId": "",
+  "eventType": "",
+  "aggregateId": "",
+  "timestamp": "",
+  "version": 1,
+  "traceId": "",
   "data": {}
 }
 ```
 
-错误：
+修改 Event Schema 时必须检查：
 
-```json
-{
-  "code": "ORDER_NOT_FOUND",
-  "message": "order not found"
-}
-```
+- 向前兼容
+- 向后兼容
+- 老 Producer → 新 Consumer
+- 新 Producer → 老 Consumer
 
 ---
 
-# 27. 日志规范
+## 12. 状态机规则
 
-关键日志必须包含业务 ID：
+核心状态不得随意通过 setter 修改。
+
+禁止类似：
+
+```java
+order.setStatus(...)
+```
+
+直接承载复杂状态流转。
+
+应通过：
+
+- Domain Method
+- State Machine
+- Command Handler
+
+表达状态变化。
+
+非法状态流转必须明确拒绝。
+
+---
+
+## 13. Retry 规则
+
+Retry 前必须确认操作是幂等的。
+
+数据库请求超时并不代表数据库一定没有执行成功。
+
+因此禁止简单：
 
 ```text
-requestId
-userId
-orderId
-tradeId
-symbol
+catch timeout
+↓
+再次扣款
 ```
 
-例如：
+重试设计必须结合：
 
-```java
-log.info(
-    "order created, userId={}, orderId={}, symbol={}",
-    userId,
-    orderId,
-    symbol
-);
-```
-
-禁止：
-
-```java
-log.info("order created");
-```
-
-资金、订单、成交异常必须具备完整上下文。
+- businessId
+- idempotency key
+- unique index
+- transaction
+- current state
 
 ---
 
-# 28. 日志安全
+## 14. 日志规则
+
+核心链路建议携带：
+
+- traceId
+- userId
+- orderId
+- tradeId
+- symbol
+- eventId
+- sequence
 
 禁止打印：
 
-* Password
-* Private Key
-* API Secret
-* JWT 完整 Token
-* 身份证
-* 银行卡
-* 用户敏感信息
-
-API Key 只能脱敏打印。
+- Password
+- Private Key
+- API Secret
+- 完整 Access Token
+- 完整敏感认证数据
 
 ---
 
-# 29. 并发规范
+## 15. 测试规则
 
-优先避免共享状态。
+核心业务修改必须增加或更新对应测试。
 
-如果可以使用：
+优先覆盖：
 
-```text
-单线程
-分区
-Actor
-Queue
-```
+- 正常路径
+- 边界条件
+- 重复请求
+- 并发
+- 事务失败
+- 重试
+- 状态非法
+- Kafka 重复消费
 
-解决，则不要优先使用锁。
+不得为了测试通过而：
 
-禁止随意添加：
-
-```java
-synchronized
-```
-
-任何锁必须说明：
-
-```text
-保护什么资源
-为什么需要
-锁粒度
-可能的性能影响
-```
+- 删除失败测试
+- 注释核心代码
+- 修改断言使错误结果变成正确结果
 
 ---
 
-# 30. Redis 规范
+## 16. Code Review 优先级
 
-Redis 适合：
-
-* Cache
-* Rate Limit
-* Distributed Lock
-* Session
-* 临时状态
-
-Redis 不应该作为：
+Review 代码时按以下顺序：
 
 ```text
-资金最终事实来源
+P0 资金安全
+P1 数据一致性
+P2 并发
+P3 幂等
+P4 状态机
+P5 Kafka / 消息一致性
+P6 可恢复性
+P7 数据库性能
+P8 普通代码质量
 ```
 
-资金最终状态必须有数据库或可靠账本保证。
+不得为了变量命名等低优先级问题，忽略重复扣款、状态错乱等高优先级问题。
 
 ---
 
-# 31. 分布式锁规范
+## 17. Definition of Done
 
-能通过数据库 CAS / 唯一索引解决的问题，不优先使用分布式锁。
-
-优先级：
+只有以下要求满足后才能声明完成：
 
 ```text
-单线程
->
-数据库唯一索引
->
-CAS
->
-Redis Lock
+[ ] 已阅读相关 AGENTS.md
+[ ] 已搜索现有实现
+[ ] 已分析调用链
+[ ] 已确认模块边界
+[ ] 已分析事务
+[ ] 已分析幂等
+[ ] 已分析并发
+[ ] 已分析状态变化
+[ ] 已分析 Kafka 影响
+[ ] 已完成必要代码
+[ ] 已补充必要测试
+[ ] 编译通过
+[ ] Unit Test 通过
+[ ] Integration Test 通过
+[ ] 已检查 Git Diff
+[ ] 无明显无关修改
 ```
 
----
-
-# 32. 单元测试规范
-
-核心业务必须测试。
-
-包括：
+任何核心验证失败：
 
 ```text
-订单创建
-订单取消
-资金冻结
-资金解冻
-完全成交
-部分成交
-重复消费
-余额不足
-重复订单
-撮合价格优先
-撮合时间优先
-```
-
-修改核心业务代码时必须同步修改测试。
-
----
-
-# 33. 测试命名规范
-
-推荐：
-
-```java
-shouldCreateOrderWhenBalanceEnough()
-```
-
-```java
-shouldRejectOrderWhenBalanceInsufficient()
-```
-
-```java
-shouldMatchHigherBuyPriceFirst()
-```
-
-测试应该体现：
-
-```text
-条件
-+
-行为
-+
-预期结果
+TASK != COMPLETE
 ```
 
 ---
 
-# 34. AI 编码规范
+## 18. 最终输出格式
 
-AI 修改代码之前必须先：
+完成任务后简要输出：
 
-1. 阅读相关代码。
-2. 理解当前项目结构。
-3. 查找已有类似实现。
-4. 确认影响范围。
-5. 再进行修改。
+### 需求理解
 
-禁止：
+说明解决的问题。
 
-```text
-没有阅读代码直接生成整套新架构
-```
+### 修改内容
 
----
+说明主要修改。
 
-# 35. AI 修改原则
+### 关键设计
 
-AI 必须遵循：
+重点说明：
 
-```text
-Minimal Change
-```
+- 事务
+- 幂等
+- 并发
+- 状态机
+- Kafka
 
-只修改完成当前任务必要的文件。
+如不涉及可以省略。
 
-禁止：
+### 修改文件
 
-* 顺手重构整个模块。
-* 修改无关格式。
-* 大规模重命名。
-* 删除看似无用但未确认用途的代码。
+列出主要文件。
 
----
+### 测试结果
 
-# 36. AI 编码前分析
+列出实际执行的测试。
 
-开始编码前输出：
+### 风险
 
-```text
-需求理解
-影响模块
-实现方案
-风险点
-计划修改文件
-```
-
-如果是简单修改，可以简化，但不得完全跳过分析。
-
----
-
-# 37. AI 编码后检查
-
-代码完成后必须检查：
-
-```text
-编译
-测试
-边界条件
-异常路径
-事务
-并发
-幂等
-数据库索引
-Kafka 重复消费
-```
-
-并说明：
-
-```text
-修改了什么
-为什么这么修改
-是否存在剩余风险
-```
-
----
-
-# 38. 禁止事项
-
-禁止：
-
-* 无理由引入新依赖。
-* 无理由修改公共 API。
-* 使用 double 表示资金。
-* 先查余额再更新余额。
-* 忽略 SQL affected rows。
-* Kafka Consumer 不做幂等。
-* 状态机任意跳转。
-* Controller 写核心业务。
-* 捕获 Exception 后什么都不做。
-* 使用空 catch。
-* 把异常堆栈直接返回用户。
-* 硬编码密码、Token、Secret。
-* 删除失败测试以让 CI 通过。
-* 为了通过测试修改错误业务逻辑。
-
----
-
-# 39. Codex 工作方式
-
-收到需求后按照下面流程执行：
-
-```text
-1. 阅读 AGENTS.md
-2. 阅读相关模块代码
-3. 查找类似实现
-4. 明确现有架构
-5. 给出修改方案
-6. 实现代码
-7. 编译
-8. 执行测试
-9. 修复问题
-10. 输出修改总结
-```
-
-除非用户明确要求，否则不要跳过测试。
-
----
-
-# 40. 设计优先级
-
-在出现多个方案时，按照以下顺序选择：
-
-```text
-正确性
->
-数据一致性
->
-可恢复性
->
-可维护性
->
-性能
->
-代码简洁
-```
-
-对于撮合核心路径：
-
-```text
-正确性
->
-确定性
->
-性能
->
-扩展性
-```
-
-对于资金系统：
-
-```text
-正确性
->
-一致性
->
-可审计性
->
-性能
-```
-
-任何涉及订单、成交、资金的代码，都必须优先保证数据正确性。
+如仍有潜在问题必须明确指出。

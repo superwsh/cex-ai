@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
-/** 定时接管超时结算任务，并调度数据库驱动的延迟重试。 */
+/** 定时接管结算任务，并调度数据库驱动的延迟重试。 */
 @Component
 @RequiredArgsConstructor
 public class SettlementRecoveryJob {

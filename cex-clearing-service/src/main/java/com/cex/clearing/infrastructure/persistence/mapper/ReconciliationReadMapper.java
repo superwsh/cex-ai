@@ -9,11 +9,15 @@ import org.apache.ibatis.annotations.Select;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/** 对账只读查询，禁止在此 Mapper 中修改账户、流水或凭证。 */
+/**
+ * 对账只读查询，禁止在此 Mapper 中修改账户、流水或凭证。
+ */
 @Mapper
 public interface ReconciliationReadMapper {
 
-    /** 查找已超过宽限时间但尚未成功结算的成交快照。 */
+    /**
+     * 查找已超过宽限时间但尚未成功结算的成交快照。
+     */
     @Select("""
             SELECT trade_id AS tradeId, status AS settlementStatus
             FROM settlement_task
@@ -22,9 +26,12 @@ public interface ReconciliationReadMapper {
             LIMIT #{limit}
             """)
     List<IncompleteSettlementRow> selectIncompleteSettlements(@Param("before") LocalDateTime before,
-                                                               @Param("limit") int limit);
+                                                              @Param("limit") int limit);
 
-    /** 查找 SUCCESS 结算任务缺少成功凭证、凭证明细或余额流水的情况。 */
+    /**
+     * 查找结算任务状态为 SUCCESS
+     * 但缺少成功凭证、凭证明细或余额流水的情况。
+     */
     @Select("""
             SELECT st.trade_id AS tradeId, st.status AS settlementStatus
             FROM settlement_task st
@@ -43,7 +50,9 @@ public interface ReconciliationReadMapper {
             """)
     List<IncompleteSettlementRow> selectSettlementLedgerInconsistencies(@Param("limit") int limit);
 
-    /** 根据首笔流水的期初快照和累计变动重建账户余额，返回出现差额的账户。 */
+    /**
+     * 根据首笔流水的期初快照和累计变动重建账户余额，返回出现差额的账户。
+     */
     @Select("""
             SELECT ab.user_id AS userId, ab.asset AS asset,
                    (COALESCE((SELECT first_flow.available_before
@@ -69,11 +78,15 @@ public interface ReconciliationReadMapper {
             """)
     List<AccountLedgerSnapshotRow> selectAccountLedgerInconsistencies(@Param("limit") int limit);
 
-    /** 判断指定成交是否已经成功结算。 */
+    /**
+     * 判断指定成交是否已经成功结算。
+     */
     @Select("SELECT COUNT(1) FROM settlement_task WHERE trade_id = #{tradeId} AND status = 'SUCCESS'")
     int countSuccessfulSettlement(@Param("tradeId") String tradeId);
 
-    /** 判断指定成功结算是否同时拥有 Journal、Entry 和 Balance Flow。 */
+    /**
+     * 判断指定成功结算是否同时拥有 Journal、Entry 和 Balance Flow。
+     */
     @Select("""
             SELECT COUNT(1)
             FROM settlement_task st
@@ -88,7 +101,9 @@ public interface ReconciliationReadMapper {
             """)
     int countCompleteSettlementLedger(@Param("tradeId") String tradeId);
 
-    /** 重新计算指定账户；仅在可用或冻结余额仍有差异时返回记录。 */
+    /**
+     * 重新计算指定账户；仅在可用或冻结余额仍有差异时返回记录。
+     */
     @Select("""
             SELECT ab.user_id AS userId, ab.asset AS asset,
                    (COALESCE((SELECT first_flow.available_before FROM balance_flow first_flow
@@ -108,5 +123,5 @@ public interface ReconciliationReadMapper {
             HAVING expectedAvailable <> actualAvailable OR expectedFrozen <> actualFrozen
             """)
     AccountLedgerSnapshotRow selectAccountLedgerInconsistency(@Param("userId") Long userId,
-                                                               @Param("asset") String asset);
+                                                              @Param("asset") String asset);
 }
